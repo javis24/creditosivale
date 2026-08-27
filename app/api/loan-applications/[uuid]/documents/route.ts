@@ -134,7 +134,12 @@ export async function POST(
       );
     }
 
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    const hasBlobReadWriteToken = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+    const hasBlobOidcCredentials = Boolean(
+      process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID,
+    );
+
+    if (!hasBlobReadWriteToken && !hasBlobOidcCredentials) {
       throw new ApiError(
         503,
         "El almacenamiento privado de documentos todavía no está configurado.",
