@@ -6,6 +6,10 @@ import { setSessionCookie, signSession } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { loginSchema } from "@/lib/validation";
 import type { Role } from "@/types/auth";
+import {
+  normalizeMexicanWhatsapp,
+  whatsappLookupCandidates,
+} from "@/lib/phone";
 
 type LoginUserRow = RowDataPacket & {
   id: number;
@@ -30,18 +34,30 @@ export async function POST(request: Request) {
     });
     const credentials = loginSchema.parse(body);
     const identifier = credentials.identifier.trim().toLowerCase();
-    const whatsapp = identifier.replace(/\D/g, "");
+    const whatsapp = normalizeMexicanWhatsapp(identifier);
+
+if (!identifier.includes("@") && !/^\d{10}$/.test(whatsapp)) {
+  throw new ApiError(
+    400,
+    "Escribe un número de WhatsApp mexicano de 10 dígitos.",
+    "INVALID_WHATSAPP",
+  );
+}
+
+const [phone10, phone52, phone521] =
+  whatsappLookupCandidates(identifier);
     const db = getDb();
     const [rows] = await db.execute<LoginUserRow[]>(
-      `SELECT id, uuid, first_name, paternal_last_name, maternal_last_name,
-              email, phone, password_hash, role, status,
-              failed_login_attempts, locked_until,
-              (locked_until IS NOT NULL AND locked_until > NOW()) AS is_locked
-         FROM users
-        WHERE LOWER(email) = ? OR phone = ?
-        LIMIT 1`,
-      [identifier, whatsapp],
-    );
+  `SELECT id, uuid, first_name, paternal_last_name, maternal_last_name,
+          email, phone, password_hash, role, status,
+          failed_login_attempts, locked_until,
+          (locked_until IS NOT NULL AND locked_until > NOW()) AS is_locked
+     FROM users
+    WHERE LOWER(email) = ?
+       OR phone IN (?, ?, ?)
+    LIMIT 1`,
+  [identifier, phone10, phone52, phone521],
+);
     const user = rows[0];
 
     const passwordMatches = user
