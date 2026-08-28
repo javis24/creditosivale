@@ -55,7 +55,8 @@ export async function GET(
       headers: {
         "Content-Type": result.blob.contentType,
         "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(document.original_name)}`,
-        "Content-Security-Policy": "default-src 'none'",
+        "Content-Security-Policy": "default-src 'none'; frame-ancestors 'self'",
+        "X-Frame-Options": "SAMEORIGIN",
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "private, no-store",
       },
