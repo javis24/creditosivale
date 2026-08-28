@@ -6,7 +6,6 @@ import { apiErrorResponse, ApiError } from "@/lib/api-error";
 import { setSessionCookie, signSession } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { publicRegisterSchema } from "@/lib/validation";
-import { normalizeMexicanWhatsapp } from "@/lib/phone";
 
 export async function POST(request: Request) {
   let connection: PoolConnection | undefined;
@@ -16,15 +15,7 @@ export async function POST(request: Request) {
       throw new ApiError(400, "Los datos enviados no son válidos.", "INVALID_JSON");
     });
     const data = publicRegisterSchema.parse(body);
-    const whatsapp = normalizeMexicanWhatsapp(data.whatsapp);
-
-if (!/^\d{10}$/.test(whatsapp)) {
-  throw new ApiError(
-    400,
-    "Escribe un número de WhatsApp mexicano de 10 dígitos.",
-    "INVALID_WHATSAPP",
-  );
-}
+    const whatsapp = data.whatsapp.replace(/\D/g, "");
 
     connection = await getDb().getConnection();
     await connection.beginTransaction();

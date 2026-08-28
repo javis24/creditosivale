@@ -1,33 +1,5 @@
--- Ejecuta este archivo dentro de la base seleccionada en phpMyAdmin.
--- Compatible con MySQL 8 y MariaDB 10.5+.
-
-CREATE TABLE IF NOT EXISTS users (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  uuid CHAR(36) NOT NULL,
-  first_name VARCHAR(100) NOT NULL,
-  paternal_last_name VARCHAR(100) NOT NULL DEFAULT '',
-  maternal_last_name VARCHAR(100) NULL,
-  email VARCHAR(190) NULL,
-  phone VARCHAR(20) NULL,
-  password_hash VARCHAR(255) NOT NULL,
-  role ENUM('admin', 'gerencia', 'vendedor', 'cliente') NOT NULL DEFAULT 'cliente',
-  status ENUM('activo', 'inactivo', 'bloqueado') NOT NULL DEFAULT 'activo',
-  failed_login_attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
-  locked_until DATETIME NULL,
-  last_login_at DATETIME NULL,
-  created_by BIGINT UNSIGNED NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  UNIQUE KEY uq_users_uuid (uuid),
-  UNIQUE KEY uq_users_email (email),
-  UNIQUE KEY uq_users_phone (phone),
-  KEY idx_users_role_status (role, status),
-  KEY idx_users_name (paternal_last_name, maternal_last_name, first_name),
-  CONSTRAINT fk_users_created_by
-    FOREIGN KEY (created_by) REFERENCES users(id)
-    ON UPDATE CASCADE ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- Ejecuta este archivo una sola vez en phpMyAdmin.
+-- Agrega el tarifario, solicitudes, documentos privados, auditoría y notificaciones.
 
 CREATE TABLE IF NOT EXISTS credit_options (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -70,13 +42,9 @@ CREATE TABLE IF NOT EXISTS loan_applications (
     'cancelado'
   ) NOT NULL DEFAULT 'borrador',
   requested_amount DECIMAL(10,2) NOT NULL,
-  approved_amount DECIMAL(10,2) NULL,
   term_fortnights TINYINT UNSIGNED NOT NULL,
-  approved_term_fortnights TINYINT UNSIGNED NULL,
   fortnight_payment DECIMAL(10,2) NOT NULL,
-  approved_fortnight_payment DECIMAL(10,2) NULL,
   total_payment DECIMAL(10,2) NOT NULL,
-  approved_total_payment DECIMAL(10,2) NULL,
   purpose VARCHAR(300) NULL,
   privacy_notice_version VARCHAR(30) NULL,
   privacy_consent_at DATETIME NULL,
@@ -91,7 +59,6 @@ CREATE TABLE IF NOT EXISTS loan_applications (
   reviewed_by BIGINT UNSIGNED NULL,
   reviewed_at DATETIME NULL,
   rejection_reason VARCHAR(500) NULL,
-  review_notes VARCHAR(1000) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -125,20 +92,14 @@ CREATE TABLE IF NOT EXISTS client_documents (
   verification_status ENUM('pendiente', 'verificado', 'rechazado')
     NOT NULL DEFAULT 'pendiente',
   rejection_reason VARCHAR(500) NULL,
-  verified_by BIGINT UNSIGNED NULL,
-  verified_at DATETIME NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_client_documents_application_type (application_id, document_type),
   KEY idx_client_documents_verification (verification_status),
-  KEY idx_client_documents_reviewer (verified_by),
   CONSTRAINT fk_client_documents_application
     FOREIGN KEY (application_id) REFERENCES loan_applications(id)
-    ON UPDATE CASCADE ON DELETE CASCADE,
-  CONSTRAINT fk_client_documents_reviewer
-    FOREIGN KEY (verified_by) REFERENCES users(id)
-    ON UPDATE CASCADE ON DELETE SET NULL
+    ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS application_events (
@@ -170,42 +131,6 @@ CREATE TABLE IF NOT EXISTS notifications (
   PRIMARY KEY (id),
   KEY idx_notifications_user_read (user_id, read_at, created_at),
   CONSTRAINT fk_notifications_user
-    FOREIGN KEY (user_id) REFERENCES users(id)
-    ON UPDATE CASCADE ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS client_profiles (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  user_id BIGINT UNSIGNED NOT NULL,
-  birth_date DATE NOT NULL,
-  curp CHAR(18) NULL,
-  rfc VARCHAR(13) NULL,
-  ine_number VARCHAR(30) NULL,
-  gender ENUM('mujer', 'hombre', 'no_especificado') NOT NULL DEFAULT 'no_especificado',
-  marital_status ENUM('soltero', 'casado', 'union_libre', 'divorciado', 'viudo', 'otro') NULL,
-  occupation VARCHAR(150) NULL,
-  company_name VARCHAR(190) NULL,
-  monthly_income DECIMAL(12,2) NOT NULL DEFAULT 0,
-  address TEXT NULL,
-  street VARCHAR(190) NULL,
-  exterior_number VARCHAR(20) NULL,
-  interior_number VARCHAR(20) NULL,
-  neighborhood VARCHAR(150) NULL,
-  postal_code VARCHAR(10) NOT NULL,
-  city VARCHAR(120) NULL,
-  state VARCHAR(120) NULL,
-  country VARCHAR(80) NOT NULL DEFAULT 'México',
-  emergency_contact_name VARCHAR(190) NULL,
-  emergency_contact_phone VARCHAR(20) NULL,
-  notes TEXT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  UNIQUE KEY uq_client_profiles_user (user_id),
-  UNIQUE KEY uq_client_profiles_curp (curp),
-  UNIQUE KEY uq_client_profiles_rfc (rfc),
-  KEY idx_client_profiles_location (state, city),
-  CONSTRAINT fk_client_profiles_user
     FOREIGN KEY (user_id) REFERENCES users(id)
     ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

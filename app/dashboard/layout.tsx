@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import LogoutButton from "@/components/LogoutButton";
 import { requirePageUser } from "@/lib/auth";
 
@@ -13,7 +14,7 @@ const roleLabels = {
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const user = await requirePageUser();
-  const canManageClients = user.role !== "cliente";
+  if (user.role === "cliente") redirect("/mi-cuenta");
 
   return (
     <div className="app-shell">
@@ -28,8 +29,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
         <nav className="sidebar-nav" aria-label="Navegación principal">
           <Link href="/dashboard">Resumen</Link>
-          {canManageClients ? <Link href="/dashboard/clientes">Clientes</Link> : null}
-          <span className="nav-disabled">Préstamos <small>Próximamente</small></span>
+          <Link href="/dashboard/solicitudes">Solicitudes</Link>
+          <Link href="/dashboard/clientes">Clientes</Link>
           <span className="nav-disabled">Pagos <small>Próximamente</small></span>
         </nav>
 

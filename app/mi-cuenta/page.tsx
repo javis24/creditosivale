@@ -13,6 +13,8 @@ type ApplicationStatusRow = RowDataPacket & {
   status: "borrador" | "en_revision" | "aprobado" | "rechazado" | "cancelado";
   requested_amount: number;
   submitted_at: string | null;
+  reviewed_at: string | null;
+  rejection_reason: string | null;
 };
 
 type NotificationRow = RowDataPacket & {
@@ -28,7 +30,8 @@ export default async function ClientAccountPage() {
   const db = getDb();
   const [[applications], [notifications]] = await Promise.all([
     db.execute<ApplicationStatusRow[]>(
-      `SELECT uuid, status, requested_amount, submitted_at
+      `SELECT uuid, status, requested_amount, submitted_at,
+              reviewed_at, rejection_reason
          FROM loan_applications
         WHERE user_id = ?
         ORDER BY created_at DESC
@@ -47,6 +50,8 @@ export default async function ClientAccountPage() {
   const application = applications[0];
   const notification = notifications[0];
   const submitted = application?.status === "en_revision";
+  const approved = application?.status === "aprobado";
+  const rejected = application?.status === "rechazado";
   const hasDraft = application?.status === "borrador";
 
   return (
@@ -64,7 +69,11 @@ export default async function ClientAccountPage() {
           <p className="eyebrow">Mi cuenta</p>
           <h1>Hola, {user.name.split(" ")[0]}</h1>
           <p className="muted">
-            {submitted
+            {approved
+              ? "Tu solicitud fue autorizada. Te contactaremos para coordinar la entrega del crédito."
+              : rejected
+                ? "Tu solicitud fue revisada y no fue autorizada."
+                : submitted
               ? "Tu solicitud se encuentra en proceso de autorización."
               : hasDraft
                 ? "Tienes una solicitud pendiente de terminar."
@@ -72,7 +81,11 @@ export default async function ClientAccountPage() {
           </p>
         </div>
         <Link className="button button-primary" href="/solicitar-prestamo">
-          {submitted ? "Ver solicitud" : hasDraft ? "Continuar solicitud" : "Solicitar préstamo"}
+          {approved || submitted
+            ? "Ver solicitud"
+            : hasDraft
+              ? "Continuar solicitud"
+              : "Solicitar préstamo"}
         </Link>
       </section>
 
@@ -99,11 +112,23 @@ export default async function ClientAccountPage() {
           <strong>Solicitar préstamo</strong>
           <p>Indica el monto, plazo, ingresos y referencias.</p>
         </article>
-        <article className={submitted ? "progress-card complete" : application ? "progress-card current" : "progress-card"}>
-          <span>{submitted ? "✓" : "3"}</span>
+        <article className={submitted || approved || rejected ? "progress-card complete" : application ? "progress-card current" : "progress-card"}>
+          <span>{submitted || approved || rejected ? "✓" : "3"}</span>
           <small>Paso 3</small>
           <strong>Subir documentos</strong>
           <p>INE, comprobante de domicilio y fotografías.</p>
+        </article>
+        <article className={approved ? "progress-card complete" : rejected ? "progress-card rejected" : submitted ? "progress-card current" : "progress-card"}>
+          <span>{approved ? "✓" : rejected ? "×" : "4"}</span>
+          <small>Paso 4</small>
+          <strong>{approved ? "Crédito autorizado" : rejected ? "Solicitud no autorizada" : "Autorización"}</strong>
+          <p>
+            {approved
+              ? "Nos pondremos en contacto para la entrega."
+              : rejected
+                ? application?.rejection_reason || "Consulta la notificación más reciente."
+                : "El equipo revisará y resolverá tu solicitud."}
+          </p>
         </article>
       </section>
     </main>
