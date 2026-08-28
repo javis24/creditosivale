@@ -39,7 +39,10 @@ function canvasToJpeg(canvas: HTMLCanvasElement, quality: number) {
   });
 }
 
-
+/**
+ * Redimensiona y comprime fotografías en el navegador. El archivo original
+ * nunca sale del dispositivo; solamente se envía la versión optimizada.
+ */
 export async function optimizeImageForUpload(file: File) {
   if (!file.type.startsWith("image/")) return file;
   if (file.size <= TARGET_IMAGE_SIZE) return file;

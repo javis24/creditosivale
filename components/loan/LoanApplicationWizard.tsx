@@ -4,6 +4,10 @@ import Link from "next/link";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import FaceCapture from "@/components/loan/FaceCapture";
 import SignatureCanvas from "@/components/loan/SignatureCanvas";
+import {
+  MAX_UPLOAD_FILE_SIZE,
+  optimizeImageForUpload,
+} from "@/lib/client-image";
 
 type DocumentType =
   | "ine_front"
@@ -74,6 +78,7 @@ export default function LoanApplicationWizard() {
   const [preparingNote, setPreparingNote] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [processingFile, setProcessingFile] = useState<DocumentType | null>(null);
   const [uploadProgress, setUploadProgress] = useState("");
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -194,17 +199,39 @@ export default function LoanApplicationWizard() {
     setTerm(firstOption?.termFortnights || 0);
   }
 
-  function selectFile(type: DocumentType, event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+  async function selectFile(
+    type: DocumentType,
+    event: ChangeEvent<HTMLInputElement>,
+  ) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
 
-    if (file.size > 4 * 1024 * 1024) {
-      setError(`${documentLabels[type]} no puede pesar más de 4 MB.`);
-      return;
-    }
-
-    setFiles((current) => ({ ...current, [type]: file }));
+    setProcessingFile(type);
     setError("");
+
+    try {
+      const preparedFile = file.type.startsWith("image/")
+        ? await optimizeImageForUpload(file)
+        : file;
+
+      if (preparedFile.size > MAX_UPLOAD_FILE_SIZE) {
+        throw new Error(
+          `${documentLabels[type]} no puede pesar más de 4 MB.`,
+        );
+      }
+
+      setFiles((current) => ({ ...current, [type]: preparedFile }));
+    } catch (fileError) {
+      setError(
+        fileError instanceof Error
+          ? fileError.message
+          : "No fue posible preparar el archivo.",
+      );
+    } finally {
+      setProcessingFile(null);
+      input.value = "";
+    }
   }
 
   async function saveQuote() {
@@ -518,6 +545,7 @@ export default function LoanApplicationWizard() {
               helper="Fotografía completa y claramente legible."
               uploaded={uploadedTypes.has("ine_front")}
               selected={files.ine_front?.name}
+              processing={processingFile === "ine_front"}
               onChange={selectFile}
             />
             <DocumentUpload
@@ -526,6 +554,7 @@ export default function LoanApplicationWizard() {
               helper="Incluye códigos y toda la superficie de la credencial."
               uploaded={uploadedTypes.has("ine_back")}
               selected={files.ine_back?.name}
+              processing={processingFile === "ine_back"}
               onChange={selectFile}
             />
             <DocumentUpload
@@ -534,6 +563,7 @@ export default function LoanApplicationWizard() {
               helper="Recibo reciente de agua, luz, gas o teléfono. Puede ser imagen o PDF."
               uploaded={uploadedTypes.has("address_proof")}
               selected={files.address_proof?.name}
+              processing={processingFile === "address_proof"}
               accept="image/jpeg,image/png,image/webp,application/pdf"
               onChange={selectFile}
             />
@@ -557,8 +587,14 @@ export default function LoanApplicationWizard() {
             <button type="button" className="button button-secondary" onClick={() => setStep(1)}>
               Regresar
             </button>
-            <button className="button button-primary" onClick={saveDocuments} disabled={saving}>
-              {uploadProgress || (saving ? "Guardando…" : "Guardar y continuar")}
+            <button
+              className="button button-primary"
+              onClick={saveDocuments}
+              disabled={saving || Boolean(processingFile)}
+            >
+              {processingFile
+                ? "Optimizando imagen…"
+                : uploadProgress || (saving ? "Guardando…" : "Guardar y continuar")}
             </button>
           </div>
         </div>
@@ -635,6 +671,7 @@ function DocumentUpload({
   helper,
   uploaded,
   selected,
+  processing,
   accept = "image/jpeg,image/png,image/webp",
   onChange,
 }: {
@@ -643,6 +680,7 @@ function DocumentUpload({
   helper: string;
   uploaded: boolean;
   selected?: string;
+  processing: boolean;
   accept?: string;
   onChange: (type: DocumentType, event: ChangeEvent<HTMLInputElement>) => void;
 }) {
@@ -652,12 +690,14 @@ function DocumentUpload({
       <h3>{label}</h3>
       <p>{helper}</p>
       {uploaded ? <span className="uploaded-badge">Ya guardado</span> : null}
-      {selected ? <span className="selected-file">{selected}</span> : null}
+      {processing ? <span className="selected-file">Optimizando imagen…</span> : null}
+      {!processing && selected ? <span className="selected-file">{selected}</span> : null}
       <span className="button button-secondary">{uploaded ? "Reemplazar" : "Seleccionar archivo"}</span>
       <input
         type="file"
         accept={accept}
         capture={type === "address_proof" ? undefined : "environment"}
+        disabled={processing}
         onChange={(event) => onChange(type, event)}
       />
     </label>
