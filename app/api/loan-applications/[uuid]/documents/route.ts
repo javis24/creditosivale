@@ -258,13 +258,13 @@ export async function POST(
           SET privacy_notice_version = ?,
               privacy_consent_at = COALESCE(privacy_consent_at, NOW()),
               biometric_consent_at = CASE
-                WHEN ? = 'face_photo' THEN COALESCE(biometric_consent_at, NOW())
+                WHEN ? = 1 THEN COALESCE(biometric_consent_at, NOW())
                 ELSE biometric_consent_at
               END
         WHERE id = ?`,
       [
         process.env.PRIVACY_NOTICE_VERSION || "2026-08",
-        documentType,
+        documentType === "face_photo" ? 1 : 0,
         lockedApplication.id,
       ],
     );
