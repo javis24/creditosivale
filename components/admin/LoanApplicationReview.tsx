@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { WhatsAppApprovalNotice } from "@/components/admin/WhatsAppActions";
 
 type Document = {
   id: number;
@@ -397,6 +398,13 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
             >
               Administrar crédito
             </Link>
+            <WhatsAppApprovalNotice
+              phone={application.client.phone}
+              clientName={application.client.name}
+              approvedAmount={application.requestedAmount}
+              installmentAmount={application.fortnightPayment}
+              termFortnights={application.termFortnights}
+            />
           </div>
         ) : null}
       </section>

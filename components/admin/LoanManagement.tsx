@@ -2,6 +2,10 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  WhatsAppApprovalNotice,
+  WhatsAppPaymentReminder,
+} from "@/components/admin/WhatsAppActions";
 
 type Installment = {
   uuid: string;
@@ -266,6 +270,51 @@ export default function LoanManagement({ uuid }: { uuid: string }) {
           <strong>{formatDate(loan.maturityDate)}</strong>
         </article>
       </section>
+
+      {loan.status === "pendiente_desembolso" ? (
+        <section className="panel whatsapp-action-panel">
+          <div>
+            <p className="eyebrow">Aviso por WhatsApp</p>
+            <h2>Notificar autorización</h2>
+            <p className="muted">
+              Envía al cliente el monto autorizado, pago quincenal y plazo.
+            </p>
+          </div>
+          <WhatsAppApprovalNotice
+            phone={loan.client.phone}
+            clientName={loan.client.name}
+            approvedAmount={loan.principal}
+            installmentAmount={loan.installmentAmount}
+            termFortnights={loan.termFortnights}
+          />
+        </section>
+      ) : null}
+
+      {loan.status === "activo" && currentInstallment ? (
+        <section className="panel whatsapp-action-panel">
+          <div>
+            <p className="eyebrow">Recordatorio por WhatsApp</p>
+            <h2>Próximo pago: {formatDate(currentInstallment.dueDate)}</h2>
+            <p className="muted">
+              Pago {currentInstallment.installmentNumber} de {loan.termFortnights} por{" "}
+              {money.format(
+                Math.max(0, currentInstallment.amountDue - currentInstallment.amountPaid),
+              )}.
+            </p>
+          </div>
+          <WhatsAppPaymentReminder
+            phone={loan.client.phone}
+            clientName={loan.client.name}
+            amount={Math.max(
+              0,
+              currentInstallment.amountDue - currentInstallment.amountPaid,
+            )}
+            dueDate={currentInstallment.dueDate}
+            installmentNumber={currentInstallment.installmentNumber}
+            termFortnights={loan.termFortnights}
+          />
+        </section>
+      ) : null}
 
       {loan.status === "pendiente_desembolso" ? (
         <section className="panel loan-action-panel">

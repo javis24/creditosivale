@@ -2101,6 +2101,35 @@ td small {
   text-align: right;
 }
 
+.whatsapp-action-panel {
+  display: flex;
+  padding: 24px 28px;
+  border-color: #a7dfc8;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.whatsapp-action-panel h2 {
+  margin-bottom: 5px;
+}
+
+.button-whatsapp {
+  color: #ffffff;
+  border-color: #1f9d61;
+  background: #1f9d61;
+  white-space: nowrap;
+}
+
+.button-whatsapp:hover {
+  background: #16824f;
+}
+
+.button-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 @media (max-width: 980px) {
   .auth-page {
     grid-template-columns: 1fr;
@@ -2440,6 +2469,7 @@ td small {
 
   .client-loan-heading,
   .inline-action-form,
+  .whatsapp-action-panel,
   .client-loan-history-list article {
     align-items: stretch;
     flex-direction: column;
