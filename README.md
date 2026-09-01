@@ -1,6 +1,8 @@
 # Crédito Sí Vale — administración de préstamos
 
-Primera fase de una aplicación de administración de clientes para préstamos personales. Incluye autenticación segura, permisos por rol y expedientes personales de clientes.
+Aplicación de administración de clientes y préstamos personales. Incluye
+autenticación, solicitudes documentales, autorización, cartera, calendario
+quincenal e historial de pagos.
 
 ## Incluido en esta entrega
 
@@ -14,6 +16,11 @@ Primera fase de una aplicación de administración de clientes para préstamos p
 - Transacción al crear un cliente: cuenta y expediente se guardan juntos.
 - Formulario de datos personales, contacto, actividad económica, domicilio y contacto de emergencia.
 - Panel responsive para escritorio y celular.
+- Autorización administrativa con validación de documentos privados.
+- Activación del crédito y calendario automático los días 15 y 30.
+- Registro de pagos aplicado primero a las quincenas más antiguas.
+- Perfil del cliente con semana, quincena, próximo pago, saldo e historial.
+- Liquidación automática y habilitación de una nueva solicitud.
 
 > phpMyAdmin no es la base de datos: es la herramienta desde la que administrarás MySQL o MariaDB.
 
@@ -69,6 +76,20 @@ NEXT_PUBLIC_APP_NAME=Crédito Sí Vale
 
 El archivo no crea ni selecciona una base por nombre, por lo que funciona también con los nombres automáticos que asigna Hostinger.
 
+Si tu base ya contiene las tablas de las entregas anteriores, no vuelvas a
+importar todo el esquema. Ejecuta solamente:
+
+```text
+database/migration-005-loans-and-payments.sql
+```
+
+La migración también incorpora a la cartera las solicitudes que ya estaban
+autorizadas antes de instalar este módulo.
+
+Después ejecuta `database/migration-006-credit-options-plus-18.sql` para
+aplicar el tarifario vigente con $18 adicionales en cada pago quincenal. Este
+ajuste sólo se usa en cotizaciones nuevas y no modifica contratos existentes.
+
 ## 4. Crear el primer administrador
 
 Después de importar las tablas ejecuta:
@@ -98,6 +119,10 @@ Abre [http://localhost:3000](http://localhost:3000). Para probar la conexión de
 | `GET` | `/api/users` | Personal | Listar y buscar usuarios |
 | `POST` | `/api/users` | Personal | Crear cliente o usuario |
 | `GET` | `/api/users/:uuid` | Personal o propietario | Consultar expediente |
+| `GET` | `/api/admin/loans` | Personal | Consultar cartera |
+| `GET` | `/api/admin/loans/:uuid` | Personal | Consultar crédito y pagos |
+| `POST` | `/api/admin/loans/:uuid/activate` | Admin/Gerencia | Activar crédito |
+| `POST` | `/api/admin/loans/:uuid/payments` | Admin/Gerencia | Registrar pago |
 
 `gerencia` y `vendedor` pueden crear clientes. Únicamente `admin` puede crear cuentas de personal.
 
@@ -161,6 +186,10 @@ git push -u origin main
 
 Si la base está en Hostinger, utiliza el host MySQL remoto que muestra su panel; no uses `localhost` en Vercel. Algunos planes restringen las conexiones remotas o exigen autorizar el origen.
 
-## Siguiente fase recomendada
+## Flujo de cartera
 
-La estructura está preparada para agregar tablas y módulos de préstamos, calendario quincenal (días 15 y 30), documentos, pagos, recibos y recordatorios por WhatsApp.
+1. Admin o Gerencia autoriza una solicitud con sus cinco documentos verificados.
+2. El crédito aparece en **Créditos y pagos** como pendiente de entrega.
+3. Al confirmar la fecha de entrega se genera el calendario quincenal.
+4. Cada pago se registra en el crédito y se distribuye en orden.
+5. Al cubrir el saldo, el crédito cambia a `liquidado` y el cliente puede solicitar otro.

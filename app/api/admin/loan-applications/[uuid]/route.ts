@@ -33,6 +33,8 @@ type ApplicationRow = RowDataPacket & {
   occupation: string | null;
   monthly_income: number;
   reviewer_name: string | null;
+  loan_uuid: string | null;
+  loan_status: string | null;
 };
 
 type DocumentRow = RowDataPacket & {
@@ -69,11 +71,13 @@ export async function GET(
               u.uuid AS client_uuid, u.phone, u.email,
               cp.birth_date, cp.address, cp.postal_code,
               cp.occupation, cp.monthly_income,
+              l.uuid AS loan_uuid, l.status AS loan_status,
               TRIM(CONCAT_WS(' ', reviewer.first_name, reviewer.paternal_last_name,
                                   reviewer.maternal_last_name)) AS reviewer_name
          FROM loan_applications la
          INNER JOIN users u ON u.id = la.user_id
          INNER JOIN client_profiles cp ON cp.user_id = u.id
+         LEFT JOIN loans l ON l.application_id = la.id
          LEFT JOIN users reviewer ON reviewer.id = la.reviewed_by
         WHERE la.uuid = ?
         LIMIT 1`,
@@ -117,6 +121,12 @@ export async function GET(
         rejectionReason: application.rejection_reason,
         reviewNotes: application.review_notes,
         reviewerName: application.reviewer_name,
+        loan: application.loan_uuid
+          ? {
+              uuid: application.loan_uuid,
+              status: application.loan_status,
+            }
+          : null,
         client: {
           uuid: application.client_uuid,
           name: application.client_name,

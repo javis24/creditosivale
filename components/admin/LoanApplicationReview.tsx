@@ -33,6 +33,10 @@ type Application = {
   rejectionReason: string | null;
   reviewNotes: string | null;
   reviewerName: string | null;
+  loan: {
+    uuid: string;
+    status: string;
+  } | null;
   client: {
     uuid: string;
     name: string;
@@ -379,6 +383,20 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
                 {saving ? "Guardando…" : "Autorizar crédito"}
               </button>
             </div>
+          </div>
+        ) : null}
+
+        {application.loan ? (
+          <div className="decision-fields">
+            <div className="alert alert-success">
+              El crédito ya forma parte de la cartera.
+            </div>
+            <Link
+              className="button button-primary"
+              href={`/dashboard/creditos/${application.loan.uuid}`}
+            >
+              Administrar crédito
+            </Link>
           </div>
         ) : null}
       </section>

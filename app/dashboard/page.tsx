@@ -10,6 +10,9 @@ type SummaryRow = RowDataPacket & {
   pending: number;
   approved: number;
   rejected: number;
+  active_loans: number;
+  pending_delivery: number;
+  outstanding_balance: number;
 };
 
 export default async function DashboardPage() {
@@ -19,10 +22,22 @@ export default async function DashboardPage() {
     `SELECT
        SUM(status = 'en_revision') AS pending,
        SUM(status = 'aprobado') AS approved,
-       SUM(status = 'rechazado') AS rejected
+       SUM(status = 'rechazado') AS rejected,
+       (SELECT COUNT(*) FROM loans WHERE status = 'activo') AS active_loans,
+       (SELECT COUNT(*) FROM loans WHERE status = 'pendiente_desembolso')
+         AS pending_delivery,
+       (SELECT COALESCE(SUM(balance), 0) FROM loans WHERE status = 'activo')
+         AS outstanding_balance
        FROM loan_applications`,
   );
-  const summary = rows[0] || { pending: 0, approved: 0, rejected: 0 };
+  const summary = rows[0] || {
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    active_loans: 0,
+    pending_delivery: 0,
+    outstanding_balance: 0,
+  };
 
   return (
     <main className="page-container">
@@ -48,28 +63,39 @@ export default async function DashboardPage() {
         </article>
         <article className="summary-card">
           <span className="summary-icon">✓</span>
-          <p>Autorizadas</p>
-          <strong>{Number(summary.approved || 0)} solicitudes</strong>
-          <small>Listas para el futuro proceso de dispersión</small>
+          <p>Por entregar</p>
+          <strong>{Number(summary.pending_delivery || 0)} créditos</strong>
+          <small>Autorizados pendientes de activar</small>
+        </article>
+        <article className="summary-card">
+          <span className="summary-icon">$</span>
+          <p>Cartera activa</p>
+          <strong>{Number(summary.active_loans || 0)} créditos</strong>
+          <small>
+            {new Intl.NumberFormat("es-MX", {
+              style: "currency",
+              currency: "MXN",
+            }).format(Number(summary.outstanding_balance || 0))} por cobrar
+          </small>
         </article>
         <article className="summary-card summary-card-muted">
-          <span className="summary-icon">×</span>
-          <p>No autorizadas</p>
-          <strong>{Number(summary.rejected || 0)} solicitudes</strong>
-          <small>Resoluciones registradas con su motivo</small>
+          <span className="summary-icon">✓</span>
+          <p>Autorizadas</p>
+          <strong>{Number(summary.approved || 0)} solicitudes</strong>
+          <small>{Number(summary.rejected || 0)} no autorizadas</small>
         </article>
       </section>
 
       <section className="panel getting-started">
         <div>
           <p className="eyebrow">Flujo administrativo</p>
-          <h2>Valida primero, decide después</h2>
+          <h2>Del expediente al historial de pagos</h2>
           <p className="muted">
-            Abre una solicitud, revisa cada documento y registra una resolución trazable.
+            Revisa solicitudes, activa créditos y registra cada pago en orden.
           </p>
         </div>
-        <Link className="button button-secondary" href="/dashboard/solicitudes">
-          Ir a solicitudes
+        <Link className="button button-secondary" href="/dashboard/creditos">
+          Ir a créditos
         </Link>
       </section>
     </main>

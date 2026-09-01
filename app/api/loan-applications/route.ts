@@ -102,6 +102,29 @@ export async function POST(request: Request) {
     connection = await getDb().getConnection();
     await connection.beginTransaction();
 
+    // Serializa las solicitudes del mismo cliente y evita dos créditos simultáneos.
+    await connection.execute(
+      `SELECT id FROM users WHERE id = ? LIMIT 1 FOR UPDATE`,
+      [user.id],
+    );
+
+    const [activeLoanRows] = await connection.execute<RowDataPacket[]>(
+      `SELECT id
+         FROM loans
+        WHERE user_id = ?
+          AND status IN ('pendiente_desembolso', 'activo')
+        LIMIT 1`,
+      [user.id],
+    );
+
+    if (activeLoanRows.length) {
+      throw new ApiError(
+        409,
+        "Debes liquidar tu crédito actual antes de solicitar uno nuevo.",
+        "ACTIVE_LOAN_EXISTS",
+      );
+    }
+
     const [optionRows] = await connection.execute<OptionRow[]>(
       `SELECT fortnight_payment
          FROM credit_options

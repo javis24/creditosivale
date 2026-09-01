@@ -30,8 +30,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <nav className="sidebar-nav" aria-label="Navegación principal">
           <Link href="/dashboard">Resumen</Link>
           <Link href="/dashboard/solicitudes">Solicitudes</Link>
+          <Link href="/dashboard/creditos">Créditos y pagos</Link>
           <Link href="/dashboard/clientes">Clientes</Link>
-          <span className="nav-disabled">Pagos <small>Próximamente</small></span>
         </nav>
 
         <div className="sidebar-user">

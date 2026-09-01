@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 import { NextResponse } from "next/server";
 import { apiErrorResponse, ApiError } from "@/lib/api-error";
@@ -138,6 +139,35 @@ export async function POST(
         application.id,
       ],
     );
+
+    if (approved) {
+      await connection.execute(
+        `INSERT INTO loans (
+           uuid, application_id, user_id, status, principal,
+           term_fortnights, installment_amount, total_due,
+           amount_paid, balance
+         ) VALUES (?, ?, ?, 'pendiente_desembolso', ?, ?, ?, ?, 0, ?)
+         ON DUPLICATE KEY UPDATE
+           principal = VALUES(principal),
+           term_fortnights = VALUES(term_fortnights),
+           installment_amount = VALUES(installment_amount),
+           total_due = VALUES(total_due),
+           balance = CASE
+             WHEN status = 'pendiente_desembolso' THEN VALUES(balance)
+             ELSE balance
+           END`,
+        [
+          randomUUID(),
+          application.id,
+          application.user_id,
+          application.requested_amount,
+          application.term_fortnights,
+          application.fortnight_payment,
+          application.total_payment,
+          application.total_payment,
+        ],
+      );
+    }
 
     const amount = new Intl.NumberFormat("es-MX", {
       style: "currency",

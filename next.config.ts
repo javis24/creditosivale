@@ -16,6 +16,16 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        source: "/api/documents/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          {
+            key: "Content-Security-Policy",
+            value: "default-src 'none'; frame-ancestors 'self'",
+          },
+        ],
+      },
     ];
   },
 };
