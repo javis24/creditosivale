@@ -3,13 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
-    "db:create-admin": "node --env-file=.env scripts/create-admin.mjs"
-  },
+  "dev": "next dev",
+  "build": "next build",
+  "start": "next start",
+  "test": "vitest run",
+  "test:watch": "vitest",
+  "lint": "eslint .",
+  "typecheck": "tsc --noEmit",
+  "db:create-admin": "node --env-file=.env scripts/create-admin.mjs"
+},
   "engines": {
     "node": ">=20.9.0"
   },
@@ -29,6 +31,7 @@
     "@types/react-dom": "19.2.5",
     "eslint": "9.39.5",
     "eslint-config-next": "16.3.3",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "vitest": "^4.1.11"
   }
 }
