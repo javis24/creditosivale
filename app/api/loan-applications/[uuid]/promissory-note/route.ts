@@ -16,6 +16,7 @@ export const runtime = "nodejs";
 type ApplicationRow = RowDataPacket & PromissoryApplication & {
   id: number;
   status: string;
+  flow_version: number;
   promissory_note_text: string | null;
   promissory_note_hash: string | null;
 };
@@ -40,8 +41,15 @@ export async function POST(
     await connection.beginTransaction();
 
     const [applicationRows] = await connection.execute<ApplicationRow[]>(
-      `SELECT la.id, la.uuid, la.status, la.requested_amount,
-              la.term_fortnights, la.fortnight_payment, la.total_payment,
+      `SELECT la.id, la.uuid, la.status, la.flow_version,
+              CASE WHEN la.flow_version = 2 THEN la.offered_amount
+                   ELSE la.requested_amount END AS requested_amount,
+              CASE WHEN la.flow_version = 2 THEN la.offered_term_fortnights
+                   ELSE la.term_fortnights END AS term_fortnights,
+              CASE WHEN la.flow_version = 2 THEN la.offered_fortnight_payment
+                   ELSE la.fortnight_payment END AS fortnight_payment,
+              CASE WHEN la.flow_version = 2 THEN la.offered_total_payment
+                   ELSE la.total_payment END AS total_payment,
               la.promissory_note_text, la.promissory_note_hash,
               TRIM(CONCAT_WS(' ', u.first_name, u.paternal_last_name,
                                   u.maternal_last_name)) AS full_name,
@@ -60,8 +68,33 @@ export async function POST(
       throw new ApiError(404, "Solicitud no encontrada.", "APPLICATION_NOT_FOUND");
     }
 
-    if (application.status !== "borrador") {
-      throw new ApiError(409, "La solicitud ya fue enviada.", "APPLICATION_LOCKED");
+    const canPrepareLegacyNote =
+      application.flow_version === 1 && application.status === "borrador";
+    const canPrepareOfferNote =
+      application.flow_version === 2 && application.status === "oferta_pendiente";
+
+    if (!canPrepareLegacyNote && !canPrepareOfferNote) {
+      throw new ApiError(
+        409,
+        application.flow_version === 2
+          ? "Primero espera y revisa la oferta final del administrador."
+          : "La solicitud ya fue enviada.",
+        "APPLICATION_LOCKED",
+      );
+    }
+
+    if (
+      application.flow_version === 2 &&
+      (!application.requested_amount ||
+        !application.term_fortnights ||
+        !application.fortnight_payment ||
+        !application.total_payment)
+    ) {
+      throw new ApiError(
+        409,
+        "La oferta no contiene una cotización válida.",
+        "INVALID_OFFER",
+      );
     }
 
     const [documentRows] = await connection.execute<DocumentRow[]>(

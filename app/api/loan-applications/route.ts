@@ -12,11 +12,16 @@ export const dynamic = "force-dynamic";
 type ApplicationRow = RowDataPacket & {
   id: number;
   uuid: string;
-  status: "borrador" | "en_revision" | "aprobado" | "rechazado" | "cancelado";
+  status: "borrador" | "en_revision" | "oferta_pendiente" | "aprobado" | "rechazado" | "cancelado";
+  flow_version: number;
   requested_amount: number;
+  offered_amount: number | null;
   term_fortnights: number;
+  offered_term_fortnights: number | null;
   fortnight_payment: number;
+  offered_fortnight_payment: number | null;
   total_payment: number;
+  offered_total_payment: number | null;
   purpose: string | null;
   submitted_at: string | null;
   created_at: string;
@@ -37,10 +42,24 @@ function serializeApplication(row: ApplicationRow, documents: DocumentRow[] = []
   return {
     uuid: row.uuid,
     status: row.status,
+    flowVersion: Number(row.flow_version),
     requestedAmount: Number(row.requested_amount),
+    offeredAmount: row.offered_amount === null ? null : Number(row.offered_amount),
     termFortnights: Number(row.term_fortnights),
+    offeredTermFortnights:
+      row.offered_term_fortnights === null
+        ? null
+        : Number(row.offered_term_fortnights),
     fortnightPayment: Number(row.fortnight_payment),
+    offeredFortnightPayment:
+      row.offered_fortnight_payment === null
+        ? null
+        : Number(row.offered_fortnight_payment),
     totalPayment: Number(row.total_payment),
+    offeredTotalPayment:
+      row.offered_total_payment === null
+        ? null
+        : Number(row.offered_total_payment),
     purpose: row.purpose,
     submittedAt: row.submitted_at,
     createdAt: row.created_at,
@@ -58,8 +77,11 @@ export async function GET() {
     const user = await requireApiUser(["cliente"]);
     const db = getDb();
     const [rows] = await db.execute<ApplicationRow[]>(
-      `SELECT id, uuid, status, requested_amount, term_fortnights,
-              fortnight_payment, total_payment, purpose, submitted_at, created_at
+      `SELECT id, uuid, status, flow_version, requested_amount, offered_amount,
+              term_fortnights, offered_term_fortnights,
+              fortnight_payment, offered_fortnight_payment,
+              total_payment, offered_total_payment,
+              purpose, submitted_at, created_at
          FROM loan_applications
         WHERE user_id = ?
         ORDER BY created_at DESC
@@ -125,28 +147,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const [optionRows] = await connection.execute<OptionRow[]>(
-      `SELECT fortnight_payment
-         FROM credit_options
-        WHERE amount = ? AND term_fortnights = ? AND status = 'activo'
-        LIMIT 1`,
-      [data.amount, data.termFortnights],
-    );
-    const option = optionRows[0];
-
-    if (!option) {
-      throw new ApiError(
-        400,
-        "El monto y plazo seleccionados no están disponibles.",
-        "INVALID_CREDIT_OPTION",
-      );
-    }
-
     const [existingRows] = await connection.execute<ApplicationRow[]>(
-      `SELECT id, uuid, status, requested_amount, term_fortnights,
-              fortnight_payment, total_payment, purpose, submitted_at, created_at
+      `SELECT id, uuid, status, flow_version, requested_amount, offered_amount,
+              term_fortnights, offered_term_fortnights,
+              fortnight_payment, offered_fortnight_payment,
+              total_payment, offered_total_payment,
+              purpose, submitted_at, created_at
          FROM loan_applications
-        WHERE user_id = ? AND status IN ('borrador', 'en_revision')
+        WHERE user_id = ?
+          AND status IN ('borrador', 'en_revision', 'oferta_pendiente')
         ORDER BY created_at DESC
         LIMIT 1
         FOR UPDATE`,
@@ -154,16 +163,41 @@ export async function POST(request: Request) {
     );
     const existing = existingRows[0];
 
-    if (existing?.status === "en_revision") {
+    if (existing && existing.status !== "borrador") {
       throw new ApiError(
         409,
-        "Ya tienes una solicitud en proceso de autorización.",
+        existing.status === "oferta_pendiente"
+          ? "Tienes una oferta pendiente de aceptar."
+          : "Ya tienes una solicitud en proceso de autorización.",
         "APPLICATION_ALREADY_SUBMITTED",
       );
     }
 
-    const payment = Number(option.fortnight_payment);
-    const totalPayment = payment * data.termFortnights;
+    let payment = 0;
+    let totalPayment = 0;
+
+    // Las solicitudes anteriores conservan la cotización firmada original.
+    if (existing?.flow_version === 1) {
+      const [optionRows] = await connection.execute<OptionRow[]>(
+        `SELECT fortnight_payment
+           FROM credit_options
+          WHERE amount = ? AND term_fortnights = ? AND status = 'activo'
+          LIMIT 1`,
+        [data.amount, data.termFortnights],
+      );
+      const option = optionRows[0];
+
+      if (!option) {
+        throw new ApiError(
+          400,
+          "El monto y plazo seleccionados no están disponibles.",
+          "INVALID_CREDIT_OPTION",
+        );
+      }
+
+      payment = Number(option.fortnight_payment);
+      totalPayment = payment * data.termFortnights;
+    }
     const occurredAt = new Date().toISOString();
 
     if (existing) {
@@ -205,7 +239,12 @@ export async function POST(request: Request) {
         eventType: "quote_updated",
         actorUserId: user.id,
         occurredAt,
-        metadata: { amount: data.amount, term: data.termFortnights, payment },
+        metadata: {
+          flowVersion: existing.flow_version,
+          amount: data.amount,
+          preferredTerm: data.termFortnights,
+          payment,
+        },
       });
       await connection.execute(
         `INSERT INTO application_events
@@ -215,7 +254,12 @@ export async function POST(request: Request) {
           existing.id,
           user.id,
           eventHash,
-          JSON.stringify({ amount: data.amount, term: data.termFortnights, payment }),
+          JSON.stringify({
+            flowVersion: existing.flow_version,
+            amount: data.amount,
+            preferredTerm: data.termFortnights,
+            payment,
+          }),
         ],
       );
 
@@ -234,10 +278,15 @@ export async function POST(request: Request) {
         application: {
           uuid: existing.uuid,
           status: "borrador",
+          flowVersion: existing.flow_version,
           requestedAmount: data.amount,
+          offeredAmount: null,
           termFortnights: data.termFortnights,
+          offeredTermFortnights: null,
           fortnightPayment: payment,
+          offeredFortnightPayment: null,
           totalPayment,
+          offeredTotalPayment: null,
           purpose: data.purpose,
           documents: documents.map((document) => ({
             type: document.document_type,
@@ -252,16 +301,14 @@ export async function POST(request: Request) {
     const uuid = randomUUID();
     const [applicationResult] = await connection.execute<ResultSetHeader>(
       `INSERT INTO loan_applications (
-        uuid, user_id, status, requested_amount, term_fortnights,
+        uuid, user_id, status, flow_version, requested_amount, term_fortnights,
         fortnight_payment, total_payment, purpose
-      ) VALUES (?, ?, 'borrador', ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, 'borrador', 2, ?, ?, 0, 0, ?)`,
       [
         uuid,
         user.id,
         data.amount,
         data.termFortnights,
-        payment,
-        totalPayment,
         data.purpose,
       ],
     );
@@ -271,7 +318,11 @@ export async function POST(request: Request) {
       eventType: "application_created",
       actorUserId: user.id,
       occurredAt,
-      metadata: { amount: data.amount, term: data.termFortnights, payment },
+      metadata: {
+        flowVersion: 2,
+        amount: data.amount,
+        preferredTerm: data.termFortnights,
+      },
     });
     await connection.execute(
       `INSERT INTO application_events
@@ -281,7 +332,11 @@ export async function POST(request: Request) {
         applicationResult.insertId,
         user.id,
         eventHash,
-        JSON.stringify({ amount: data.amount, term: data.termFortnights, payment }),
+        JSON.stringify({
+          flowVersion: 2,
+          amount: data.amount,
+          preferredTerm: data.termFortnights,
+        }),
       ],
     );
 
@@ -293,10 +348,15 @@ export async function POST(request: Request) {
         application: {
           uuid,
           status: "borrador",
+          flowVersion: 2,
           requestedAmount: data.amount,
+          offeredAmount: null,
           termFortnights: data.termFortnights,
-          fortnightPayment: payment,
-          totalPayment,
+          offeredTermFortnights: null,
+          fortnightPayment: 0,
+          offeredFortnightPayment: null,
+          totalPayment: 0,
+          offeredTotalPayment: null,
           purpose: data.purpose,
           documents: [],
         },

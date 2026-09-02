@@ -76,7 +76,12 @@ export async function GET(request: Request) {
       ),
       db.execute<ApplicationRow[]>(
         `SELECT la.uuid, la.status, la.requested_amount,
-                la.term_fortnights, la.fortnight_payment, la.total_payment,
+                COALESCE(la.offered_term_fortnights, la.term_fortnights)
+                  AS term_fortnights,
+                COALESCE(la.offered_fortnight_payment, la.fortnight_payment)
+                  AS fortnight_payment,
+                COALESCE(la.offered_total_payment, la.total_payment)
+                  AS total_payment,
                 la.purpose, la.submitted_at, la.reviewed_at,
                 TRIM(CONCAT_WS(' ', u.first_name, u.paternal_last_name,
                                     u.maternal_last_name)) AS client_name,

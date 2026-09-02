@@ -3,6 +3,7 @@ import { z } from "zod";
 export const adminApplicationStatusSchema = z.enum([
   "borrador",
   "en_revision",
+  "oferta_pendiente",
   "aprobado",
   "rechazado",
   "cancelado",
@@ -25,9 +26,11 @@ export const documentReviewSchema = z
 
 export const applicationDecisionSchema = z
   .object({
-    action: z.enum(["aprobar", "rechazar"]),
+    action: z.enum(["aprobar", "ofertar", "rechazar"]),
     reason: z.string().trim().max(500).optional().default(""),
     notes: z.string().trim().max(1000).optional().default(""),
+    offeredAmount: z.coerce.number().positive().optional(),
+    offeredTermFortnights: z.coerce.number().int().positive().optional(),
   })
   .superRefine((data, context) => {
     if (data.action === "rechazar" && data.reason.length < 10) {
@@ -36,5 +39,23 @@ export const applicationDecisionSchema = z
         path: ["reason"],
         message: "Explica el motivo del rechazo con al menos 10 caracteres.",
       });
+    }
+
+    if (data.action === "ofertar") {
+      if (!data.offeredAmount) {
+        context.addIssue({
+          code: "custom",
+          path: ["offeredAmount"],
+          message: "Selecciona el monto que puedes ofrecer.",
+        });
+      }
+
+      if (![6, 8, 10, 12].includes(data.offeredTermFortnights || 0)) {
+        context.addIssue({
+          code: "custom",
+          path: ["offeredTermFortnights"],
+          message: "Selecciona un plazo disponible.",
+        });
+      }
     }
   });

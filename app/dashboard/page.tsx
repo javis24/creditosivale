@@ -20,7 +20,7 @@ export default async function DashboardPage() {
   if (user.role === "cliente") redirect("/mi-cuenta");
   const [rows] = await getDb().execute<SummaryRow[]>(
     `SELECT
-       SUM(status = 'en_revision') AS pending,
+       SUM(status IN ('en_revision', 'oferta_pendiente')) AS pending,
        SUM(status = 'aprobado') AS approved,
        SUM(status = 'rechazado') AS rejected,
        (SELECT COUNT(*) FROM loans WHERE status = 'activo') AS active_loans,

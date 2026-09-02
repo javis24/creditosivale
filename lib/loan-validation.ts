@@ -1,8 +1,20 @@
 import { z } from "zod";
 
 export const loanQuoteSchema = z.object({
-  amount: z.coerce.number().positive(),
-  termFortnights: z.coerce.number().int().positive(),
+  amount: z.coerce
+    .number()
+    .int()
+    .min(1000, "El monto mínimo es de $1,000.")
+    .max(8000, "El monto máximo es de $8,000.")
+    .refine((amount) => amount % 500 === 0, {
+      message: "El monto debe avanzar en cantidades de $500.",
+    }),
+  termFortnights: z.coerce.number().pipe(z.union([
+    z.literal(6),
+    z.literal(8),
+    z.literal(10),
+    z.literal(12),
+  ])),
   purpose: z
     .string()
     .trim()
@@ -39,4 +51,13 @@ export const submitApplicationSchema = z.object({
     error: "Debes aceptar los términos y firmar el documento.",
   }),
   noteHash: promissoryNoteHashSchema,
+});
+
+export const submitInitialApplicationSchema = z.object({
+  privacyConsent: z.literal(true, {
+    error: "Debes aceptar el aviso de privacidad.",
+  }),
+  biometricConsent: z.literal(true, {
+    error: "Debes autorizar expresamente el tratamiento de la fotografía facial.",
+  }),
 });

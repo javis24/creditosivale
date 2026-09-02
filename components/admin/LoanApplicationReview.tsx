@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { WhatsAppApprovalNotice } from "@/components/admin/WhatsAppActions";
+import {
+  WhatsAppApprovalNotice,
+  WhatsAppOfferNotice,
+} from "@/components/admin/WhatsAppActions";
 
 type Document = {
   id: number;
@@ -20,16 +23,23 @@ type Document = {
 
 type Application = {
   uuid: string;
-  status: "borrador" | "en_revision" | "aprobado" | "rechazado" | "cancelado";
+  status: "borrador" | "en_revision" | "oferta_pendiente" | "aprobado" | "rechazado" | "cancelado";
+  flowVersion: number;
   requestedAmount: number;
+  offeredAmount: number | null;
   termFortnights: number;
+  offeredTermFortnights: number | null;
   fortnightPayment: number;
+  offeredFortnightPayment: number | null;
   totalPayment: number;
+  offeredTotalPayment: number | null;
   purpose: string | null;
   promissoryNoteText: string | null;
   promissoryNoteHash: string | null;
   signedAt: string | null;
   submittedAt: string | null;
+  offeredAt: string | null;
+  offerAcceptedAt: string | null;
   reviewedAt: string | null;
   rejectionReason: string | null;
   reviewNotes: string | null;
@@ -52,6 +62,13 @@ type Application = {
   documents: Document[];
 };
 
+type CreditOption = {
+  amount: number;
+  termFortnights: number;
+  fortnightPayment: number;
+  totalPayment: number;
+};
+
 const documentLabels: Record<string, string> = {
   ine_front: "INE por el frente",
   ine_back: "INE por la parte trasera",
@@ -63,6 +80,7 @@ const documentLabels: Record<string, string> = {
 const statusLabels: Record<string, string> = {
   borrador: "Borrador",
   en_revision: "En revisión",
+  oferta_pendiente: "Oferta pendiente de firma",
   aprobado: "Aprobado",
   rechazado: "Rechazado",
   cancelado: "Cancelado",
@@ -76,6 +94,8 @@ const money = new Intl.NumberFormat("es-MX", {
 export default function LoanApplicationReview({ uuid }: { uuid: string }) {
   const [application, setApplication] = useState<Application | null>(null);
   const [canDecide, setCanDecide] = useState(false);
+  const [creditOptions, setCreditOptions] = useState<CreditOption[]>([]);
+  const [selectedOffer, setSelectedOffer] = useState("");
   const [documentReasons, setDocumentReasons] = useState<Record<number, string>>({});
   const [rejectionReason, setRejectionReason] = useState("");
   const [notes, setNotes] = useState("");
@@ -96,6 +116,19 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
       if (!response.ok) throw new Error(result.message || "No se pudo cargar la solicitud.");
       setApplication(result.application);
       setCanDecide(result.permissions.canDecide);
+      const loadedOptions: CreditOption[] = result.creditOptions || [];
+      setCreditOptions(loadedOptions);
+      setSelectedOffer((current) => {
+        if (current) return current;
+        const requested = loadedOptions.find(
+          (option) =>
+            option.amount === result.application.requestedAmount &&
+            option.termFortnights === result.application.termFortnights,
+        );
+        const fallback = loadedOptions[loadedOptions.length - 1];
+        const option = requested || fallback;
+        return option ? `${option.amount}-${option.termFortnights}` : "";
+      });
       setNotes(result.application.reviewNotes || "");
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === "AbortError") return;
@@ -117,12 +150,23 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
     };
   }, [loadApplication]);
 
-  const allDocumentsVerified = useMemo(
+  const requiredDocumentTypes = useMemo(
     () =>
-      application?.documents.length === 5 &&
-      application.documents.every((document) => document.verificationStatus === "verificado"),
-    [application],
+      application?.flowVersion === 2
+        ? ["ine_front", "ine_back", "face_photo", "address_proof"]
+        : ["ine_front", "ine_back", "face_photo", "address_proof", "signature"],
+    [application?.flowVersion],
   );
+
+  const allDocumentsVerified = useMemo(() => {
+    if (!application) return false;
+    const verified = new Set(
+      application.documents
+        .filter((document) => document.verificationStatus === "verificado")
+        .map((document) => document.type),
+    );
+    return requiredDocumentTypes.every((type) => verified.has(type));
+  }, [application, requiredDocumentTypes]);
 
   async function reviewDocument(document: Document, status: "verificado" | "rechazado") {
     const reason = (documentReasons[document.id] || "").trim();
@@ -154,7 +198,7 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
     }
   }
 
-  async function decide(action: "aprobar" | "rechazar") {
+  async function decide(action: "aprobar" | "ofertar" | "rechazar") {
     if (action === "rechazar" && rejectionReason.trim().length < 10) {
       setError("Escribe el motivo del rechazo con al menos 10 caracteres.");
       return;
@@ -164,10 +208,23 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
     setError("");
     setMessage("");
     try {
+      const option = creditOptions.find(
+        (item) => `${item.amount}-${item.termFortnights}` === selectedOffer,
+      );
+      if (action === "ofertar" && !option) {
+        throw new Error("Selecciona una oferta del tarifario.");
+      }
+
       const response = await fetch(`/api/admin/loan-applications/${uuid}/decision`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, reason: rejectionReason, notes }),
+        body: JSON.stringify({
+          action,
+          reason: rejectionReason,
+          notes,
+          offeredAmount: option?.amount,
+          offeredTermFortnights: option?.termFortnights,
+        }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message || "No se pudo guardar la decisión.");
@@ -219,12 +276,25 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
 
       <section className="review-grid">
         <article className="panel review-section">
-          <p className="eyebrow">Cotización firmada</p>
+          <p className="eyebrow">
+            {application.flowVersion === 2 ? "Petición del cliente" : "Cotización firmada"}
+          </p>
           <div className="review-quote-grid">
-            <div><span>Monto</span><strong>{money.format(application.requestedAmount)}</strong></div>
-            <div><span>Pago quincenal</span><strong>{money.format(application.fortnightPayment)}</strong></div>
-            <div><span>Plazo</span><strong>{application.termFortnights} quincenas</strong></div>
-            <div><span>Total</span><strong>{money.format(application.totalPayment)}</strong></div>
+            <div><span>Monto solicitado</span><strong>{money.format(application.requestedAmount)}</strong></div>
+            <div>
+              <span>{application.flowVersion === 2 ? "Plazo preferido" : "Pago quincenal"}</span>
+              <strong>
+                {application.flowVersion === 2
+                  ? `${application.termFortnights} quincenas`
+                  : money.format(application.fortnightPayment)}
+              </strong>
+            </div>
+            {application.flowVersion === 1 ? (
+              <>
+                <div><span>Plazo</span><strong>{application.termFortnights} quincenas</strong></div>
+                <div><span>Total</span><strong>{money.format(application.totalPayment)}</strong></div>
+              </>
+            ) : null}
           </div>
           <dl className="review-data-list">
             <div><dt>Destino</dt><dd>{application.purpose || "No especificado"}</dd></div>
@@ -236,11 +306,17 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
         </article>
 
         <article className="panel review-section">
-          <p className="eyebrow">Pagaré firmado</p>
+          <p className="eyebrow">
+            {application.promissoryNoteText ? "Pagaré firmado" : "Firma final"}
+          </p>
           {application.promissoryNoteText ? (
             <pre className="admin-promissory-note">{application.promissoryNoteText}</pre>
           ) : (
-            <p className="muted">No se encontró el pagaré.</p>
+            <p className="muted">
+              {application.flowVersion === 2
+                ? "El pagaré se generará cuando el cliente reciba y acepte la oferta final."
+                : "No se encontró el pagaré."}
+            </p>
           )}
           {application.promissoryNoteHash ? (
             <small className="hash-copy">SHA-256: {application.promissoryNoteHash}</small>
@@ -254,7 +330,13 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
             <p className="eyebrow">Validación documental</p>
             <h2>Documentos y firma</h2>
           </div>
-          <strong>{application.documents.filter((document) => document.verificationStatus === "verificado").length}/5 verificados</strong>
+          <strong>
+            {application.documents.filter(
+              (document) =>
+                requiredDocumentTypes.includes(document.type) &&
+                document.verificationStatus === "verificado",
+            ).length}/{requiredDocumentTypes.length} verificados
+          </strong>
         </div>
 
         <div className="admin-document-grid">
@@ -338,13 +420,34 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
             </p>
           ) : (
             <p className="muted">
-              La autorización conserva exactamente el monto, plazo y pagos aceptados por el cliente.
+              {application.flowVersion === 2
+                ? "Selecciona una opción activa que no supere el monto solicitado. El cliente deberá aceptarla y firmar el pagaré final."
+                : "La autorización conserva exactamente el monto, plazo y pagos aceptados por el cliente."}
             </p>
           )}
         </div>
 
         {canDecide && reviewable ? (
           <div className="decision-fields">
+            {application.flowVersion === 2 ? (
+              <label className="field">
+                <span>Monto y plazo que puedes ofrecer</span>
+                <select
+                  value={selectedOffer}
+                  onChange={(event) => setSelectedOffer(event.target.value)}
+                >
+                  <option value="">Selecciona una opción</option>
+                  {creditOptions.map((option) => (
+                    <option
+                      key={`${option.amount}-${option.termFortnights}`}
+                      value={`${option.amount}-${option.termFortnights}`}
+                    >
+                      {money.format(option.amount)} · {option.termFortnights} quincenas · {money.format(option.fortnightPayment)} por pago
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label className="field">
               <span>Notas internas (opcional)</span>
               <textarea
@@ -365,7 +468,7 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
             </label>
             {!allDocumentsVerified ? (
               <div className="decision-warning">
-                Verifica los cinco documentos antes de autorizar.
+                Verifica los {requiredDocumentTypes.length} documentos requeridos antes de continuar.
               </div>
             ) : null}
             <div className="decision-actions">
@@ -378,12 +481,42 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
               </button>
               <button
                 className="button button-approve"
-                onClick={() => decide("aprobar")}
-                disabled={saving || !allDocumentsVerified}
+                onClick={() => decide(application.flowVersion === 2 ? "ofertar" : "aprobar")}
+                disabled={
+                  saving ||
+                  !allDocumentsVerified ||
+                  (application.flowVersion === 2 && !selectedOffer)
+                }
               >
-                {saving ? "Guardando…" : "Autorizar crédito"}
+                {saving
+                  ? "Guardando…"
+                  : application.flowVersion === 2
+                    ? "Enviar oferta al cliente"
+                    : "Autorizar crédito"}
               </button>
             </div>
+          </div>
+        ) : null}
+
+        {application.status === "oferta_pendiente" &&
+        application.offeredAmount &&
+        application.offeredTermFortnights &&
+        application.offeredFortnightPayment &&
+        application.offeredTotalPayment ? (
+          <div className="decision-fields">
+            <div className="alert alert-success">
+              Oferta enviada: {money.format(application.offeredAmount)} a{" "}
+              {application.offeredTermFortnights} quincenas de{" "}
+              {money.format(application.offeredFortnightPayment)}. El cliente debe
+              aceptarla y firmarla desde su cuenta.
+            </div>
+            <WhatsAppOfferNotice
+              phone={application.client.phone}
+              clientName={application.client.name}
+              offeredAmount={application.offeredAmount}
+              installmentAmount={application.offeredFortnightPayment}
+              termFortnights={application.offeredTermFortnights}
+            />
           </div>
         ) : null}
 
@@ -401,9 +534,9 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
             <WhatsAppApprovalNotice
               phone={application.client.phone}
               clientName={application.client.name}
-              approvedAmount={application.requestedAmount}
-              installmentAmount={application.fortnightPayment}
-              termFortnights={application.termFortnights}
+              approvedAmount={application.offeredAmount || application.requestedAmount}
+              installmentAmount={application.offeredFortnightPayment || application.fortnightPayment}
+              termFortnights={application.offeredTermFortnights || application.termFortnights}
             />
           </div>
         ) : null}

@@ -29,6 +29,7 @@ type Pagination = {
 const statusLabels: Record<string, string> = {
   todas: "Todas",
   en_revision: "En revisión",
+  oferta_pendiente: "Oferta pendiente",
   aprobado: "Aprobadas",
   rechazado: "Rechazadas",
   borrador: "Borradores",
@@ -180,8 +181,10 @@ export default function LoanApplicationList() {
                     </small>
                   </td>
                   <td>
-                    {money.format(application.fortnightPayment)}
-                    <small>{application.termFortnights} quincenas</small>
+                    {application.fortnightPayment > 0
+                      ? money.format(application.fortnightPayment)
+                      : "Por definir"}
+                    <small>{application.termFortnights} quincenas preferidas</small>
                   </td>
                   <td>
                     <strong>{application.verifiedCount}/{application.documentCount}</strong>

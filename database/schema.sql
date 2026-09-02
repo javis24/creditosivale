@@ -65,17 +65,23 @@ CREATE TABLE IF NOT EXISTS loan_applications (
   status ENUM(
     'borrador',
     'en_revision',
+    'oferta_pendiente',
     'aprobado',
     'rechazado',
     'cancelado'
   ) NOT NULL DEFAULT 'borrador',
+  flow_version TINYINT UNSIGNED NOT NULL DEFAULT 2,
   requested_amount DECIMAL(10,2) NOT NULL,
+  offered_amount DECIMAL(10,2) NULL,
   approved_amount DECIMAL(10,2) NULL,
   term_fortnights TINYINT UNSIGNED NOT NULL,
+  offered_term_fortnights TINYINT UNSIGNED NULL,
   approved_term_fortnights TINYINT UNSIGNED NULL,
   fortnight_payment DECIMAL(10,2) NOT NULL,
+  offered_fortnight_payment DECIMAL(10,2) NULL,
   approved_fortnight_payment DECIMAL(10,2) NULL,
   total_payment DECIMAL(10,2) NOT NULL,
+  offered_total_payment DECIMAL(10,2) NULL,
   approved_total_payment DECIMAL(10,2) NULL,
   purpose VARCHAR(300) NULL,
   privacy_notice_version VARCHAR(30) NULL,
@@ -88,6 +94,9 @@ CREATE TABLE IF NOT EXISTS loan_applications (
   signer_ip_hash CHAR(64) NULL,
   signer_user_agent VARCHAR(500) NULL,
   submitted_at DATETIME NULL,
+  offered_by BIGINT UNSIGNED NULL,
+  offered_at DATETIME NULL,
+  offer_accepted_at DATETIME NULL,
   reviewed_by BIGINT UNSIGNED NULL,
   reviewed_at DATETIME NULL,
   rejection_reason VARCHAR(500) NULL,
@@ -98,11 +107,15 @@ CREATE TABLE IF NOT EXISTS loan_applications (
   UNIQUE KEY uq_loan_applications_uuid (uuid),
   KEY idx_loan_applications_user_status (user_id, status),
   KEY idx_loan_applications_status_date (status, submitted_at),
+  KEY idx_loan_applications_offer (status, offered_at),
   CONSTRAINT fk_loan_applications_user
     FOREIGN KEY (user_id) REFERENCES users(id)
     ON UPDATE CASCADE ON DELETE RESTRICT,
   CONSTRAINT fk_loan_applications_reviewer
     FOREIGN KEY (reviewed_by) REFERENCES users(id)
+    ON UPDATE CASCADE ON DELETE SET NULL,
+  CONSTRAINT fk_loan_applications_offered_by
+    FOREIGN KEY (offered_by) REFERENCES users(id)
     ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

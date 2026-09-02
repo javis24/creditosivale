@@ -28,6 +28,7 @@ type ApplicationRow = RowDataPacket & {
   id: number;
   uuid: string;
   status: string;
+  flow_version: number;
   promissory_note_hash: string | null;
 };
 
@@ -39,6 +40,18 @@ function allowedMimeTypes(type: DocumentType) {
   return type === "address_proof"
     ? [...IMAGE_TYPES, "application/pdf"]
     : IMAGE_TYPES;
+}
+
+function canUploadDocument(application: ApplicationRow, type: DocumentType) {
+  if (type === "signature") {
+    return (
+      (application.flow_version === 1 && application.status === "borrador") ||
+      (application.flow_version === 2 &&
+        application.status === "oferta_pendiente")
+    );
+  }
+
+  return application.status === "borrador";
 }
 
 function hasExpectedSignature(bytes: Uint8Array, mimeType: string) {
@@ -148,7 +161,7 @@ export async function POST(
     }
 
     const [applicationRows] = await getDb().execute<ApplicationRow[]>(
-      `SELECT id, uuid, status, promissory_note_hash
+      `SELECT id, uuid, status, flow_version, promissory_note_hash
          FROM loan_applications
         WHERE uuid = ? AND user_id = ?
         LIMIT 1`,
@@ -160,10 +173,12 @@ export async function POST(
       throw new ApiError(404, "Solicitud no encontrada.", "APPLICATION_NOT_FOUND");
     }
 
-    if (application.status !== "borrador") {
+    if (!canUploadDocument(application, documentType)) {
       throw new ApiError(
         409,
-        "Los documentos de una solicitud enviada ya no se pueden modificar.",
+        documentType === "signature"
+          ? "La firma sólo puede capturarse al aceptar la oferta final."
+          : "Los documentos de una solicitud enviada ya no se pueden modificar.",
         "APPLICATION_LOCKED",
       );
     }
@@ -192,7 +207,7 @@ export async function POST(
     await connection.beginTransaction();
 
     const [lockedRows] = await connection.execute<ApplicationRow[]>(
-      `SELECT id, uuid, status, promissory_note_hash
+      `SELECT id, uuid, status, flow_version, promissory_note_hash
          FROM loan_applications
         WHERE uuid = ? AND user_id = ?
         LIMIT 1
@@ -201,7 +216,10 @@ export async function POST(
     );
     const lockedApplication = lockedRows[0];
 
-    if (!lockedApplication || lockedApplication.status !== "borrador") {
+    if (
+      !lockedApplication ||
+      !canUploadDocument(lockedApplication, documentType)
+    ) {
       throw new ApiError(409, "La solicitud ya no admite cambios.", "APPLICATION_LOCKED");
     }
 

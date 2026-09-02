@@ -13,6 +13,7 @@ type ApplicationRow = RowDataPacket & {
   uuid: string;
   user_id: number;
   status: string;
+  flow_version: number;
   requested_amount: number;
   term_fortnights: number;
   fortnight_payment: number;
@@ -27,6 +28,10 @@ type DocumentRow = RowDataPacket & {
   verification_status: string;
 };
 
+type OptionRow = RowDataPacket & {
+  fortnight_payment: number;
+};
+
 const requiredDocumentTypes = [
   "ine_front",
   "ine_back",
@@ -34,6 +39,10 @@ const requiredDocumentTypes = [
   "address_proof",
   "signature",
 ];
+
+const requiredIdentityTypes = requiredDocumentTypes.filter(
+  (type) => type !== "signature",
+);
 
 export async function POST(
   request: Request,
@@ -54,7 +63,7 @@ export async function POST(
     await connection.beginTransaction();
 
     const [applicationRows] = await connection.execute<ApplicationRow[]>(
-      `SELECT id, uuid, user_id, status, requested_amount,
+      `SELECT id, uuid, user_id, status, flow_version, requested_amount,
               term_fortnights, fortnight_payment, total_payment,
               promissory_note_hash, signed_at, submitted_at
          FROM loan_applications
@@ -85,7 +94,138 @@ export async function POST(
       [application.id],
     );
 
+    const verifiedTypes = new Set(
+      documents
+        .filter((document) => document.verification_status === "verificado")
+        .map((document) => document.document_type),
+    );
+
+    if (data.action === "ofertar") {
+      if (application.flow_version !== 2) {
+        throw new ApiError(
+          409,
+          "Esta solicitud anterior debe autorizarse con su cotización firmada.",
+          "LEGACY_APPLICATION",
+        );
+      }
+
+      const missing = requiredIdentityTypes.filter(
+        (type) => !verifiedTypes.has(type),
+      );
+      if (missing.length) {
+        throw new ApiError(
+          409,
+          "Verifica los cuatro documentos de identidad antes de enviar una oferta.",
+          "DOCUMENTS_NOT_VERIFIED",
+        );
+      }
+
+      const offeredAmount = Number(data.offeredAmount);
+      const offeredTerm = Number(data.offeredTermFortnights);
+      if (offeredAmount > Number(application.requested_amount)) {
+        throw new ApiError(
+          400,
+          "El monto ofrecido no puede superar lo solicitado por el cliente.",
+          "OFFER_EXCEEDS_REQUEST",
+        );
+      }
+
+      const [optionRows] = await connection.execute<OptionRow[]>(
+        `SELECT fortnight_payment
+           FROM credit_options
+          WHERE amount = ? AND term_fortnights = ? AND status = 'activo'
+          LIMIT 1`,
+        [offeredAmount, offeredTerm],
+      );
+      const option = optionRows[0];
+      if (!option) {
+        throw new ApiError(
+          400,
+          "Selecciona una combinación activa del tarifario.",
+          "INVALID_CREDIT_OPTION",
+        );
+      }
+
+      const payment = Number(option.fortnight_payment);
+      const total = payment * offeredTerm;
+      await connection.execute(
+        `UPDATE loan_applications
+            SET status = 'oferta_pendiente',
+                offered_amount = ?,
+                offered_term_fortnights = ?,
+                offered_fortnight_payment = ?,
+                offered_total_payment = ?,
+                offered_by = ?, offered_at = NOW(),
+                reviewed_by = ?, reviewed_at = NOW(),
+                review_notes = ?, rejection_reason = NULL,
+                promissory_note_version = NULL,
+                promissory_note_text = NULL,
+                promissory_note_hash = NULL
+          WHERE id = ?`,
+        [
+          offeredAmount,
+          offeredTerm,
+          payment,
+          total,
+          actor.id,
+          actor.id,
+          data.notes || null,
+          application.id,
+        ],
+      );
+
+      const amount = new Intl.NumberFormat("es-MX", {
+        style: "currency",
+        currency: "MXN",
+        maximumFractionDigits: 0,
+      }).format(offeredAmount);
+      const message = `Tenemos una oferta de ${amount} a ${offeredTerm} quincenas, con pagos de ${new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(payment)}. Revísala y fírmala desde tu cuenta.`;
+      await connection.execute(
+        `INSERT INTO notifications
+          (user_id, notification_type, title, message)
+         VALUES (?, 'loan_offer_available', 'Tienes una oferta de crédito', ?)`,
+        [application.user_id, message],
+      );
+
+      const occurredAt = new Date().toISOString();
+      const metadata = {
+        requestedAmount: Number(application.requested_amount),
+        offeredAmount,
+        termFortnights: offeredTerm,
+        fortnightPayment: payment,
+        totalPayment: total,
+        notes: data.notes || null,
+      };
+      const eventHash = applicationEventHash({
+        applicationUuid: application.uuid,
+        eventType: "offer_created",
+        actorUserId: actor.id,
+        occurredAt,
+        metadata,
+      });
+      await connection.execute(
+        `INSERT INTO application_events
+          (application_id, actor_user_id, event_type, event_hash, metadata_json)
+         VALUES (?, ?, 'offer_created', ?, ?)`,
+        [application.id, actor.id, eventHash, JSON.stringify(metadata)],
+      );
+
+      await connection.commit();
+      return NextResponse.json({
+        ok: true,
+        status: "oferta_pendiente",
+        message: "Oferta enviada al cliente para su aceptación y firma.",
+      });
+    }
+
     if (data.action === "aprobar") {
+      if (application.flow_version !== 1) {
+        throw new ApiError(
+          409,
+          "En el flujo nuevo debes enviar una oferta para que el cliente firme el monto final.",
+          "OFFER_REQUIRED",
+        );
+      }
       if (
         !application.promissory_note_hash ||
         !application.signed_at ||
@@ -98,11 +238,6 @@ export async function POST(
         );
       }
 
-      const verifiedTypes = new Set(
-        documents
-          .filter((document) => document.verification_status === "verificado")
-          .map((document) => document.document_type),
-      );
       const missing = requiredDocumentTypes.filter((type) => !verifiedTypes.has(type));
 
       if (missing.length) {

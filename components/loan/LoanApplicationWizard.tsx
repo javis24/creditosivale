@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import FaceCapture from "@/components/loan/FaceCapture";
 import SignatureCanvas from "@/components/loan/SignatureCanvas";
@@ -32,11 +33,16 @@ type ApplicationDocument = {
 
 type LoanApplication = {
   uuid: string;
-  status: "borrador" | "en_revision" | "aprobado" | "rechazado" | "cancelado";
+  status: "borrador" | "en_revision" | "oferta_pendiente" | "aprobado" | "rechazado" | "cancelado";
+  flowVersion: number;
   requestedAmount: number;
+  offeredAmount: number | null;
   termFortnights: number;
+  offeredTermFortnights: number | null;
   fortnightPayment: number;
+  offeredFortnightPayment: number | null;
   totalPayment: number;
+  offeredTotalPayment: number | null;
   purpose: string | null;
   documents: ApplicationDocument[];
 };
@@ -56,6 +62,9 @@ const requiredIdentityDocuments: DocumentType[] = [
   "address_proof",
 ];
 
+const requestAmounts = Array.from({ length: 15 }, (_, index) => 1000 + index * 500);
+const requestedTerms = [6, 8, 10, 12];
+
 const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
   currency: "MXN",
@@ -63,6 +72,7 @@ const money = new Intl.NumberFormat("es-MX", {
 });
 
 export default function LoanApplicationWizard() {
+  const router = useRouter();
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [options, setOptions] = useState<CreditOption[]>([]);
   const [application, setApplication] = useState<LoanApplication | null>(null);
@@ -102,7 +112,19 @@ export default function LoanApplicationWizard() {
 
         const loadedApplication = applicationResult.application as LoanApplication | null;
 
-        if (loadedApplication?.status === "en_revision") {
+        if (loadedApplication?.status === "oferta_pendiente") {
+          setApplication(loadedApplication);
+          setAmount(loadedApplication.offeredAmount || loadedApplication.requestedAmount);
+          setTerm(
+            loadedApplication.offeredTermFortnights ||
+              loadedApplication.termFortnights,
+          );
+          setPurpose(loadedApplication.purpose || "");
+          setPrivacyConsent(true);
+          setBiometricConsent(true);
+          setPreparingNote(true);
+          setStep(3);
+        } else if (loadedApplication?.status === "en_revision") {
           setApplication(loadedApplication);
           setSuccessMessage(
             "Tu solicitud de crédito está en proceso de autorización.",
@@ -127,12 +149,12 @@ export default function LoanApplicationWizard() {
           if (identityComplete) {
             setPrivacyConsent(true);
             setBiometricConsent(true);
-            setPreparingNote(true);
+            setPreparingNote(loadedApplication.flowVersion === 1);
           }
           setStep(identityComplete ? 3 : 2);
-        } else if (loadedOptions.length) {
-          setAmount(loadedOptions[0].amount);
-          setTerm(loadedOptions[0].termFortnights);
+        } else {
+          setAmount(1000);
+          setTerm(6);
         }
       })
       .catch((requestError) => {
@@ -151,7 +173,10 @@ export default function LoanApplicationWizard() {
   }, []);
 
   useEffect(() => {
-    if (step !== 3 || !application?.uuid) return;
+    const needsPromissoryNote =
+      application?.flowVersion === 1 ||
+      application?.status === "oferta_pendiente";
+    if (step !== 3 || !application?.uuid || !needsPromissoryNote) return;
 
     const controller = new AbortController();
 
@@ -178,11 +203,20 @@ export default function LoanApplicationWizard() {
       .finally(() => setPreparingNote(false));
 
     return () => controller.abort();
-  }, [step, application?.uuid]);
+  }, [
+    step,
+    application?.uuid,
+    application?.flowVersion,
+    application?.status,
+  ]);
 
+  const legacyFlow = application?.flowVersion === 1;
   const amounts = useMemo(
-    () => [...new Set(options.map((option) => option.amount))],
-    [options],
+    () =>
+      legacyFlow
+        ? [...new Set(options.map((option) => option.amount))]
+        : requestAmounts,
+    [legacyFlow, options],
   );
 
   const availableOptions = options.filter((option) => option.amount === amount);
@@ -192,11 +226,15 @@ export default function LoanApplicationWizard() {
   const uploadedTypes = new Set(
     application?.documents?.map((document) => document.type) || [],
   );
+  const needsSignature =
+    application?.flowVersion === 1 || application?.status === "oferta_pendiente";
 
   function selectAmount(newAmount: number) {
-    const firstOption = options.find((option) => option.amount === newAmount);
     setAmount(newAmount);
-    setTerm(firstOption?.termFortnights || 0);
+    if (legacyFlow) {
+      const firstOption = options.find((option) => option.amount === newAmount);
+      setTerm(firstOption?.termFortnights || 0);
+    }
   }
 
   async function selectFile(
@@ -235,7 +273,12 @@ export default function LoanApplicationWizard() {
   }
 
   async function saveQuote() {
-    if (!selectedOption || purpose.trim().length < 5) {
+    const validNewRequest =
+      requestAmounts.includes(amount) && requestedTerms.includes(term);
+    if (
+      (legacyFlow ? !selectedOption : !validNewRequest) ||
+      purpose.trim().length < 5
+    ) {
       setError("Selecciona un monto, un plazo y escribe el destino del préstamo.");
       return;
     }
@@ -308,6 +351,11 @@ export default function LoanApplicationWizard() {
   }
 
   async function saveDocuments() {
+    if (!application) {
+      setError("Primero guarda la solicitud.");
+      return;
+    }
+
     if (!privacyConsent || !biometricConsent) {
       setError(
         "Debes aceptar el aviso de privacidad y autorizar la fotografía facial.",
@@ -340,7 +388,7 @@ export default function LoanApplicationWizard() {
       }
 
       setUploadProgress("");
-      setPreparingNote(true);
+      setPreparingNote(application.flowVersion === 1);
       setStep(3);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (requestError) {
@@ -359,7 +407,48 @@ export default function LoanApplicationWizard() {
     if (!application) return;
 
     if (!promissoryAccepted) {
-      setError("Debes aceptar los términos del pagaré.");
+      setError(
+        application.flowVersion === 2 && application.status === "borrador"
+          ? "Confirma que deseas enviar la solicitud."
+          : "Debes aceptar los términos del pagaré.",
+      );
+      return;
+    }
+
+    if (application.flowVersion === 2 && application.status === "borrador") {
+      setSaving(true);
+      setError("");
+
+      try {
+        const response = await fetch(
+          `/api/loan-applications/${application.uuid}/submit`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              privacyConsent: true,
+              biometricConsent: true,
+            }),
+          },
+        );
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message);
+
+        setApplication((current) =>
+          current ? { ...current, status: result.status } : current,
+        );
+        setSuccessMessage(result.message);
+        setStep(4);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } catch (requestError) {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "No fue posible enviar la solicitud.",
+        );
+      } finally {
+        setSaving(false);
+      }
       return;
     }
 
@@ -403,6 +492,9 @@ export default function LoanApplicationWizard() {
 
       if (!response.ok) throw new Error(result.message);
 
+      setApplication((current) =>
+        current ? { ...current, status: result.status } : current,
+      );
       setSuccessMessage(result.message);
       setStep(4);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -414,6 +506,31 @@ export default function LoanApplicationWizard() {
       );
     } finally {
       setUploadProgress("");
+      setSaving(false);
+    }
+  }
+
+  async function declineOffer() {
+    if (!application || application.status !== "oferta_pendiente") return;
+    if (!window.confirm("¿Seguro que deseas rechazar esta oferta?")) return;
+
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/loan-applications/${application.uuid}/offer/decline`,
+        { method: "POST" },
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message);
+      router.push("/mi-cuenta");
+      router.refresh();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "No fue posible rechazar la oferta.",
+      );
       setSaving(false);
     }
   }
@@ -442,8 +559,11 @@ export default function LoanApplicationWizard() {
         <div className="wizard-card">
           <div className="wizard-heading">
             <p className="eyebrow">Paso 1 de 4</p>
-            <h1>Elige tu préstamo</h1>
-            <p className="muted">Selecciona el monto y las quincenas disponibles.</p>
+            <h1>¿Cuánto necesitas?</h1>
+            <p className="muted">
+              Puedes solicitar hasta $8,000. Después de revisar tus documentos,
+              te mostraremos el monto y pagos que podemos ofrecerte.
+            </p>
           </div>
 
           <div className="amount-grid">
@@ -460,19 +580,31 @@ export default function LoanApplicationWizard() {
           </div>
 
           <div className="term-section">
-            <strong>¿En cuántas quincenas?</strong>
+            <strong>¿Qué plazo prefieres?</strong>
             <div className="term-grid">
-              {availableOptions.map((option) => (
-                <button
-                  key={option.termFortnights}
-                  type="button"
-                  className={term === option.termFortnights ? "term-option selected" : "term-option"}
-                  onClick={() => setTerm(option.termFortnights)}
-                >
-                  <strong>{option.termFortnights}</strong>
-                  <span>{money.format(option.fortnightPayment)} por quincena</span>
-                </button>
-              ))}
+              {legacyFlow
+                ? availableOptions.map((option) => (
+                    <button
+                      key={option.termFortnights}
+                      type="button"
+                      className={term === option.termFortnights ? "term-option selected" : "term-option"}
+                      onClick={() => setTerm(option.termFortnights)}
+                    >
+                      <strong>{option.termFortnights}</strong>
+                      <span>{money.format(option.fortnightPayment)} por quincena</span>
+                    </button>
+                  ))
+                : requestedTerms.map((requestedTerm) => (
+                    <button
+                      key={requestedTerm}
+                      type="button"
+                      className={term === requestedTerm ? "term-option selected" : "term-option"}
+                      onClick={() => setTerm(requestedTerm)}
+                    >
+                      <strong>{requestedTerm}</strong>
+                      <span>quincenas preferidas</span>
+                    </button>
+                  ))}
             </div>
           </div>
 
@@ -487,12 +619,19 @@ export default function LoanApplicationWizard() {
             />
           </label>
 
-          {selectedOption ? (
+          {legacyFlow && selectedOption ? (
             <div className="quote-summary">
               <div><span>Recibes</span><strong>{money.format(selectedOption.amount)}</strong></div>
               <div><span>Pago quincenal</span><strong>{money.format(selectedOption.fortnightPayment)}</strong></div>
               <div><span>Número de pagos</span><strong>{selectedOption.termFortnights}</strong></div>
               <div><span>Total a pagar</span><strong>{money.format(selectedOption.totalPayment)}</strong></div>
+            </div>
+          ) : !legacyFlow ? (
+            <div className="quote-summary">
+              <div><span>Monto solicitado</span><strong>{money.format(amount)}</strong></div>
+              <div><span>Plazo preferido</span><strong>{term} quincenas</strong></div>
+              <div><span>Pago final</span><strong>Por definir</strong></div>
+              <div><span>Autorización</span><strong>Sujeta a revisión</strong></div>
             </div>
           ) : null}
 
@@ -604,11 +743,22 @@ export default function LoanApplicationWizard() {
         <div className="wizard-card">
           <div className="wizard-heading">
             <p className="eyebrow">Paso 3 de 4</p>
-            <h1>Revisa y firma</h1>
-            <p className="muted">Verifica cuidadosamente los términos antes de continuar.</p>
+            <h1>{needsSignature ? "Revisa y firma" : "Confirma tu solicitud"}</h1>
+            <p className="muted">
+              {needsSignature
+                ? "Verifica cuidadosamente los términos finales antes de continuar."
+                : "El monto definitivo y los pagos se establecerán después de revisar tus documentos."}
+            </p>
           </div>
 
-          {preparingNote ? (
+          {!needsSignature ? (
+            <div className="quote-summary">
+              <div><span>Monto solicitado</span><strong>{money.format(application.requestedAmount)}</strong></div>
+              <div><span>Plazo preferido</span><strong>{application.termFortnights} quincenas</strong></div>
+              <div><span>Pago final</span><strong>Por definir</strong></div>
+              <div><span>Estado</span><strong>Listo para revisión</strong></div>
+            </div>
+          ) : preparingNote ? (
             <div className="loading-card">Preparando el pagaré…</div>
           ) : promissoryText ? (
             <pre className="promissory-note">{promissoryText}</pre>
@@ -621,12 +771,13 @@ export default function LoanApplicationWizard() {
               onChange={(event) => setPromissoryAccepted(event.target.checked)}
             />
             <span>
-              Confirmo que revisé la cotización, que mis documentos son auténticos
-              y que acepto los términos mostrados.
+              {needsSignature
+                ? "Confirmo que revisé la oferta, que mis documentos son auténticos y que acepto los términos mostrados."
+                : "Confirmo que mis documentos son auténticos y deseo enviar esta solicitud para revisión."}
             </span>
           </label>
 
-          {noteHash ? (
+          {needsSignature && noteHash ? (
             <SignatureCanvas
               onChange={(file) =>
                 setFiles((current) => ({ ...current, signature: file || undefined }))
@@ -635,15 +786,33 @@ export default function LoanApplicationWizard() {
           ) : null}
 
           <div className="wizard-actions">
-            <button type="button" className="button button-secondary" onClick={() => setStep(2)}>
-              Regresar
-            </button>
+            {application.status === "oferta_pendiente" ? (
+              <button
+                type="button"
+                className="button button-danger"
+                onClick={declineOffer}
+                disabled={saving}
+              >
+                Rechazar oferta
+              </button>
+            ) : (
+              <button type="button" className="button button-secondary" onClick={() => setStep(2)}>
+                Regresar
+              </button>
+            )}
             <button
               className="button button-primary"
               onClick={submitApplication}
-              disabled={saving || preparingNote || !noteHash}
+              disabled={saving || (needsSignature && (preparingNote || !noteHash))}
             >
-              {uploadProgress || (saving ? "Enviando…" : "Firmar y enviar solicitud")}
+              {uploadProgress ||
+                (saving
+                  ? "Enviando…"
+                  : needsSignature
+                    ? application.status === "oferta_pendiente"
+                      ? "Aceptar oferta y firmar"
+                      : "Firmar y enviar solicitud"
+                    : "Enviar solicitud a revisión")}
             </button>
           </div>
         </div>
@@ -652,8 +821,14 @@ export default function LoanApplicationWizard() {
       {step === 4 ? (
         <div className="wizard-card submission-success">
           <div className="success-icon">✓</div>
-          <p className="eyebrow">Solicitud recibida</p>
-          <h1>Estamos revisando tu información</h1>
+          <p className="eyebrow">
+            {application?.status === "aprobado" ? "Crédito autorizado" : "Solicitud recibida"}
+          </p>
+          <h1>
+            {application?.status === "aprobado"
+              ? "Tu oferta fue aceptada"
+              : "Estamos revisando tu información"}
+          </h1>
           <p>{successMessage || "Tu crédito está en proceso de autorización."}</p>
           {application ? <small>Folio: {application.uuid}</small> : null}
           <Link href="/mi-cuenta" className="button button-primary">

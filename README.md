@@ -17,6 +17,8 @@ quincenal e historial de pagos.
 - Formulario de datos personales, contacto, actividad económica, domicilio y contacto de emergencia.
 - Panel responsive para escritorio y celular.
 - Autorización administrativa con validación de documentos privados.
+- Solicitudes iniciales de $1,000 a $8,000 y contraoferta administrativa.
+- Firma del pagaré únicamente después de que el cliente acepta el monto final.
 - Activación del crédito y calendario automático los días 15 y 30.
 - Registro de pagos aplicado primero a las quincenas más antiguas.
 - Perfil del cliente con semana, quincena, próximo pago, saldo e historial.
@@ -90,6 +92,14 @@ Después ejecuta `database/migration-006-credit-options-plus-18.sql` para
 aplicar el tarifario vigente con $18 adicionales en cada pago quincenal. Este
 ajuste sólo se usa en cotizaciones nuevas y no modifica contratos existentes.
 
+Finalmente ejecuta `database/migration-007-counteroffers.sql`. Esta migración
+mantiene intactas las solicitudes anteriores y activa el flujo nuevo:
+
+1. El cliente solicita de $1,000 a $8,000 y envía sus documentos.
+2. Admin o Gerencia verifica la identidad y elige una opción activa del tarifario.
+3. El cliente recibe la oferta, revisa el monto final y firma el pagaré.
+4. Al aceptar se crea el crédito pendiente de entrega.
+
 ## 4. Crear el primer administrador
 
 Después de importar las tablas ejecuta:
@@ -121,6 +131,7 @@ Abre [http://localhost:3000](http://localhost:3000). Para probar la conexión de
 | `GET` | `/api/users/:uuid` | Personal o propietario | Consultar expediente |
 | `GET` | `/api/admin/loans` | Personal | Consultar cartera |
 | `GET` | `/api/admin/loans/:uuid` | Personal | Consultar crédito y pagos |
+| `POST` | `/api/admin/loan-applications/:uuid/decision` | Admin/Gerencia | Ofertar, autorizar legado o rechazar |
 | `POST` | `/api/admin/loans/:uuid/activate` | Admin/Gerencia | Activar crédito |
 | `POST` | `/api/admin/loans/:uuid/payments` | Admin/Gerencia | Registrar pago |
 
@@ -188,8 +199,35 @@ Si la base está en Hostinger, utiliza el host MySQL remoto que muestra su panel
 
 ## Flujo de cartera
 
-1. Admin o Gerencia autoriza una solicitud con sus cinco documentos verificados.
-2. El crédito aparece en **Créditos y pagos** como pendiente de entrega.
-3. Al confirmar la fecha de entrega se genera el calendario quincenal.
-4. Cada pago se registra en el crédito y se distribuye en orden.
-5. Al cubrir el saldo, el crédito cambia a `liquidado` y el cliente puede solicitar otro.
+1. Admin o Gerencia verifica los cuatro documentos de identidad.
+2. Envía una oferta del tarifario, igual o menor al monto solicitado.
+3. El cliente acepta la oferta y firma el pagaré con el monto final.
+4. El crédito aparece en **Créditos y pagos** como pendiente de entrega.
+5. Al confirmar la fecha de entrega se genera el calendario quincenal.
+6. Cada pago se registra en el crédito y se distribuye en orden.
+7. Al cubrir el saldo, el crédito cambia a `liquidado` y el cliente puede solicitar otro.
+
+## Pruebas automáticas
+
+Ejecuta las pruebas unitarias del calendario, teléfonos, validaciones y tarifario:
+
+```bash
+npm test
+```
+
+Comprueba de forma no destructiva las páginas y protecciones del sitio publicado:
+
+```powershell
+$env:TEST_BASE_URL="https://www.creditosivale.com"
+npm run test:smoke
+```
+
+Con las credenciales de MySQL configuradas en `.env`, revisa tablas,
+collations, las 36 tarifas, créditos duplicados y saldos:
+
+```bash
+npm run test:db
+```
+
+GitHub Actions ejecutará automáticamente tests, TypeScript, ESLint y build en
+cada `push` a `main`.

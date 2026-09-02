@@ -11,15 +11,22 @@ type ApplicationRow = RowDataPacket & {
   id: number;
   uuid: string;
   status: string;
+  flow_version: number;
   requested_amount: number;
+  offered_amount: number | null;
   term_fortnights: number;
+  offered_term_fortnights: number | null;
   fortnight_payment: number;
+  offered_fortnight_payment: number | null;
   total_payment: number;
+  offered_total_payment: number | null;
   purpose: string | null;
   promissory_note_text: string | null;
   promissory_note_hash: string | null;
   signed_at: string | null;
   submitted_at: string | null;
+  offered_at: string | null;
+  offer_accepted_at: string | null;
   reviewed_at: string | null;
   rejection_reason: string | null;
   review_notes: string | null;
@@ -35,6 +42,12 @@ type ApplicationRow = RowDataPacket & {
   reviewer_name: string | null;
   loan_uuid: string | null;
   loan_status: string | null;
+};
+
+type CreditOptionRow = RowDataPacket & {
+  amount: number;
+  term_fortnights: number;
+  fortnight_payment: number;
 };
 
 type DocumentRow = RowDataPacket & {
@@ -61,10 +74,14 @@ export async function GET(
     const db = getDb();
 
     const [rows] = await db.execute<ApplicationRow[]>(
-      `SELECT la.id, la.uuid, la.status, la.requested_amount,
-              la.term_fortnights, la.fortnight_payment, la.total_payment,
+      `SELECT la.id, la.uuid, la.status, la.flow_version,
+              la.requested_amount, la.offered_amount,
+              la.term_fortnights, la.offered_term_fortnights,
+              la.fortnight_payment, la.offered_fortnight_payment,
+              la.total_payment, la.offered_total_payment,
               la.purpose, la.promissory_note_text, la.promissory_note_hash,
-              la.signed_at, la.submitted_at, la.reviewed_at,
+              la.signed_at, la.submitted_at, la.offered_at,
+              la.offer_accepted_at, la.reviewed_at,
               la.rejection_reason, la.review_notes,
               TRIM(CONCAT_WS(' ', u.first_name, u.paternal_last_name,
                                   u.maternal_last_name)) AS client_name,
@@ -102,21 +119,55 @@ export async function GET(
       [application.id],
     );
 
+    const [creditOptions] = await db.execute<CreditOptionRow[]>(
+      `SELECT amount, term_fortnights, fortnight_payment
+         FROM credit_options
+        WHERE status = 'activo' AND amount <= ?
+        ORDER BY amount, term_fortnights`,
+      [application.requested_amount],
+    );
+
     return NextResponse.json({
       ok: true,
       permissions: { canDecide: ["admin", "gerencia"].includes(actor.role) },
+      creditOptions: creditOptions.map((option) => ({
+        amount: Number(option.amount),
+        termFortnights: Number(option.term_fortnights),
+        fortnightPayment: Number(option.fortnight_payment),
+        totalPayment:
+          Number(option.term_fortnights) * Number(option.fortnight_payment),
+      })),
       application: {
         uuid: application.uuid,
         status: application.status,
+        flowVersion: Number(application.flow_version),
         requestedAmount: Number(application.requested_amount),
+        offeredAmount:
+          application.offered_amount === null
+            ? null
+            : Number(application.offered_amount),
         termFortnights: Number(application.term_fortnights),
+        offeredTermFortnights:
+          application.offered_term_fortnights === null
+            ? null
+            : Number(application.offered_term_fortnights),
         fortnightPayment: Number(application.fortnight_payment),
+        offeredFortnightPayment:
+          application.offered_fortnight_payment === null
+            ? null
+            : Number(application.offered_fortnight_payment),
         totalPayment: Number(application.total_payment),
+        offeredTotalPayment:
+          application.offered_total_payment === null
+            ? null
+            : Number(application.offered_total_payment),
         purpose: application.purpose,
         promissoryNoteText: application.promissory_note_text,
         promissoryNoteHash: application.promissory_note_hash,
         signedAt: application.signed_at,
         submittedAt: application.submitted_at,
+        offeredAt: application.offered_at,
+        offerAcceptedAt: application.offer_accepted_at,
         reviewedAt: application.reviewed_at,
         rejectionReason: application.rejection_reason,
         reviewNotes: application.review_notes,

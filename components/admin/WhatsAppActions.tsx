@@ -20,6 +20,12 @@ type ApprovalNoticeProps = BaseProps & {
   termFortnights: number;
 };
 
+type OfferNoticeProps = BaseProps & {
+  offeredAmount: number;
+  installmentAmount: number;
+  termFortnights: number;
+};
+
 const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
   currency: "MXN",
@@ -110,6 +116,26 @@ export function WhatsAppApprovalNotice({
   return (
     <WhatsAppButton url={whatsappUrl(phone, message)}>
       Avisar crédito autorizado
+    </WhatsAppButton>
+  );
+}
+
+export function WhatsAppOfferNotice({
+  phone,
+  clientName,
+  offeredAmount,
+  installmentAmount,
+  termFortnights,
+}: OfferNoticeProps) {
+  const message =
+    `Hola ${firstName(clientName)}, Crédito Sí Vale revisó tu solicitud y tiene ` +
+    `una oferta por ${money.format(offeredAmount)} MXN, con pagos de ` +
+    `${money.format(installmentAmount)} MXN durante ${termFortnights} quincenas. ` +
+    "Entra a tu cuenta para revisar los términos. El crédito se autoriza cuando aceptes y firmes la oferta.";
+
+  return (
+    <WhatsAppButton url={whatsappUrl(phone, message)}>
+      Avisar oferta por WhatsApp
     </WhatsAppButton>
   );
 }

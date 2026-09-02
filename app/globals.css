@@ -1429,6 +1429,11 @@ td small {
   background: #fff4d6;
 }
 
+.status-oferta_pendiente {
+  color: #7a4b00;
+  background: #fff0c2;
+}
+
 .status-aprobado {
   color: var(--green-600);
   background: var(--green-100);

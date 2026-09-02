@@ -10,8 +10,12 @@ export const dynamic = "force-dynamic";
 
 type ApplicationRow = RowDataPacket & {
   uuid: string;
-  status: "borrador" | "en_revision" | "aprobado" | "rechazado" | "cancelado";
+  status: "borrador" | "en_revision" | "oferta_pendiente" | "aprobado" | "rechazado" | "cancelado";
   requested_amount: number;
+  offered_amount: number | null;
+  offered_term_fortnights: number | null;
+  offered_fortnight_payment: number | null;
+  offered_total_payment: number | null;
   rejection_reason: string | null;
 };
 
@@ -96,7 +100,9 @@ export default async function ClientAccountPage() {
   const db = getDb();
   const [[applications], [notifications], [loans]] = await Promise.all([
     db.execute<ApplicationRow[]>(
-      `SELECT uuid, status, requested_amount, rejection_reason
+      `SELECT uuid, status, requested_amount, offered_amount,
+              offered_term_fortnights, offered_fortnight_payment,
+              offered_total_payment, rejection_reason
          FROM loan_applications
         WHERE user_id = ?
         ORDER BY created_at DESC
@@ -159,7 +165,7 @@ export default async function ClientAccountPage() {
   const hasOpenLoan = loans.some((item) =>
     ["activo", "pendiente_desembolso"].includes(item.status),
   );
-  const hasOpenApplication = ["borrador", "en_revision"].includes(
+  const hasOpenApplication = ["borrador", "en_revision", "oferta_pendiente"].includes(
     application?.status || "",
   );
   const canApply = !hasOpenLoan && !hasOpenApplication;
@@ -190,6 +196,8 @@ export default async function ClientAccountPage() {
                   ? "Terminaste tu crédito. Ya puedes solicitar uno nuevo."
                   : application?.status === "en_revision"
                     ? "Tu solicitud está en proceso de autorización."
+                    : application?.status === "oferta_pendiente"
+                      ? "Tienes una oferta lista para revisar y firmar."
                     : "Tu cuenta está lista para solicitar un préstamo."}
           </p>
         </div>
@@ -201,8 +209,35 @@ export default async function ClientAccountPage() {
           <Link className="button button-primary" href="/solicitar-prestamo">
             Continuar solicitud
           </Link>
+        ) : application?.status === "oferta_pendiente" ? (
+          <Link className="button button-primary" href="/solicitar-prestamo">
+            Revisar y firmar oferta
+          </Link>
         ) : null}
       </section>
+
+      {application?.status === "oferta_pendiente" &&
+      application.offered_amount &&
+      application.offered_term_fortnights &&
+      application.offered_fortnight_payment &&
+      application.offered_total_payment ? (
+        <section className="panel client-loan-card">
+          <div className="client-loan-heading">
+            <div>
+              <p className="eyebrow">Oferta disponible</p>
+              <h2>{money.format(Number(application.offered_amount))}</h2>
+              <p className="muted">
+                {application.offered_term_fortnights} pagos quincenales de{" "}
+                {money.format(Number(application.offered_fortnight_payment))}. Total:{" "}
+                {money.format(Number(application.offered_total_payment))}.
+              </p>
+            </div>
+            <Link className="button button-primary" href="/solicitar-prestamo">
+              Revisar términos y firmar
+            </Link>
+          </div>
+        </section>
+      ) : null}
 
       {notifications.map((notification, index) => (
         <section className="client-notification" key={`${notification.created_at}-${index}`}>
