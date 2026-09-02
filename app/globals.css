@@ -1555,6 +1555,45 @@ td small {
   padding: 26px;
 }
 
+.admin-payout-panel {
+  display: grid;
+  padding: clamp(24px, 4vw, 34px);
+  grid-template-columns: minmax(0, 0.75fr) minmax(340px, 1.25fr);
+  align-items: start;
+  gap: 32px;
+}
+
+.admin-payout-account {
+  display: grid;
+  padding: 20px;
+  border: 1px solid var(--slate-200);
+  border-radius: 16px;
+  background: var(--slate-100);
+  gap: 14px;
+}
+
+.admin-payout-account > div {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-payout-account span {
+  color: var(--slate-500);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.admin-payout-account code,
+.payout-current-account code {
+  color: var(--slate-900);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: clamp(0.95rem, 2vw, 1.15rem);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  overflow-wrap: anywhere;
+}
+
 .review-quote-grid {
   display: grid;
   margin: 22px 0;
@@ -2017,6 +2056,65 @@ td small {
   padding: clamp(22px, 4vw, 34px);
 }
 
+.payout-account-panel {
+  display: grid;
+  margin-bottom: 24px;
+  padding: clamp(22px, 4vw, 34px);
+  grid-template-columns: minmax(0, 0.85fr) minmax(340px, 1.15fr);
+  align-items: start;
+  gap: 34px;
+}
+
+.payout-account-copy h2 {
+  margin-bottom: 10px;
+}
+
+.payout-security-note {
+  margin: 18px 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  color: #8a3b12;
+  background: #fff5e7;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.payout-current-account {
+  display: grid;
+  padding: 16px;
+  border: 1px solid var(--green-200);
+  border-radius: 12px;
+  background: var(--green-100);
+  gap: 5px;
+}
+
+.payout-current-account span {
+  color: var(--slate-600);
+  font-size: 0.78rem;
+}
+
+.payout-account-form {
+  display: grid;
+  gap: 16px;
+}
+
+.payout-consent {
+  display: flex;
+  align-items: flex-start;
+  color: var(--slate-700);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  gap: 10px;
+}
+
+.payout-consent input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  flex: 0 0 auto;
+  accent-color: var(--blue-600);
+}
+
 .client-loan-heading {
   display: flex;
   margin-bottom: 28px;
@@ -2443,7 +2541,9 @@ td small {
 
 @media (max-width: 820px) {
   .loan-action-panel,
-  .payment-form-panel {
+  .payment-form-panel,
+  .payout-account-panel,
+  .admin-payout-panel {
     grid-template-columns: 1fr;
   }
 

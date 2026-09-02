@@ -1,6 +1,7 @@
 import type { RowDataPacket } from "mysql2/promise";
 import { NextResponse } from "next/server";
 import { apiErrorResponse, ApiError } from "@/lib/api-error";
+import { maskedClabe } from "@/lib/bank-account";
 import { requireApiUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { applicationUuidSchema } from "@/lib/loan-validation";
@@ -42,6 +43,10 @@ type ApplicationRow = RowDataPacket & {
   reviewer_name: string | null;
   loan_uuid: string | null;
   loan_status: string | null;
+  payout_bank_name: string | null;
+  payout_account_holder: string | null;
+  payout_clabe_last4: string | null;
+  payout_updated_at: string | null;
 };
 
 type CreditOptionRow = RowDataPacket & {
@@ -89,12 +94,17 @@ export async function GET(
               cp.birth_date, cp.address, cp.postal_code,
               cp.occupation, cp.monthly_income,
               l.uuid AS loan_uuid, l.status AS loan_status,
+              cpa.bank_name AS payout_bank_name,
+              cpa.account_holder AS payout_account_holder,
+              cpa.clabe_last4 AS payout_clabe_last4,
+              cpa.updated_at AS payout_updated_at,
               TRIM(CONCAT_WS(' ', reviewer.first_name, reviewer.paternal_last_name,
                                   reviewer.maternal_last_name)) AS reviewer_name
          FROM loan_applications la
          INNER JOIN users u ON u.id = la.user_id
          INNER JOIN client_profiles cp ON cp.user_id = u.id
          LEFT JOIN loans l ON l.application_id = la.id
+         LEFT JOIN client_payout_accounts cpa ON cpa.user_id = la.user_id
          LEFT JOIN users reviewer ON reviewer.id = la.reviewed_by
         WHERE la.uuid = ?
         LIMIT 1`,
@@ -188,6 +198,15 @@ export async function GET(
           postalCode: application.postal_code,
           occupation: application.occupation,
           monthlyIncome: Number(application.monthly_income),
+          payoutAccount: application.payout_clabe_last4
+            ? {
+                bankName: application.payout_bank_name,
+                accountHolder: application.payout_account_holder,
+                maskedClabe: maskedClabe(application.payout_clabe_last4),
+                last4: application.payout_clabe_last4,
+                updatedAt: application.payout_updated_at,
+              }
+            : null,
         },
         documents: documents.map((document) => ({
           id: Number(document.id),

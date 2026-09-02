@@ -11,6 +11,8 @@ const requiredTables = [
   "loan_payments",
   "loan_payment_allocations",
   "notifications",
+  "client_payout_accounts",
+  "payout_account_events",
 ];
 
 const expectedOptions = new Map([
@@ -174,7 +176,7 @@ try {
     process.exitCode = 1;
   } else {
     console.log(
-      `Base correcta: ${requiredTables.length} tablas, 36 opciones y cartera consistente.`,
+      `Base correcta: ${requiredTables.length} tablas, 36 opciones, cuentas de depósito y cartera consistente.`,
     );
   }
 } finally {

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { RowDataPacket } from "mysql2/promise";
 import ClientLogoutButton from "@/components/ClientLogoutButton";
+import PayoutAccountForm from "@/components/client/PayoutAccountForm";
 import { requirePageUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
@@ -238,6 +239,8 @@ export default async function ClientAccountPage() {
           </div>
         </section>
       ) : null}
+
+      <PayoutAccountForm />
 
       {notifications.map((notification, index) => (
         <section className="client-notification" key={`${notification.created_at}-${index}`}>

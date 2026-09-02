@@ -58,6 +58,13 @@ type Application = {
     postalCode: string;
     occupation: string | null;
     monthlyIncome: number;
+    payoutAccount: {
+      bankName: string;
+      accountHolder: string;
+      maskedClabe: string;
+      last4: string;
+      updatedAt: string | null;
+    } | null;
   };
   documents: Document[];
 };
@@ -103,6 +110,11 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [revealedPayoutAccount, setRevealedPayoutAccount] = useState<{
+    bankName: string;
+    accountHolder: string;
+    clabe: string;
+  } | null>(null);
 
   const loadApplication = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -238,6 +250,38 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
     }
   }
 
+  async function revealAndCopyClabe() {
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const response = await fetch(
+        `/api/admin/loan-applications/${uuid}/payout-account`,
+        { cache: "no-store" },
+      );
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || "No se pudo consultar la cuenta.");
+      }
+
+      setRevealedPayoutAccount(result.account);
+      try {
+        await navigator.clipboard.writeText(result.account.clabe);
+        setMessage("CLABE copiada. Verifica banco y titular antes de transferir.");
+      } catch {
+        setMessage("CLABE mostrada. Cópiala manualmente y verifica los datos.");
+      }
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "No se pudo consultar la cuenta.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (loading && !application) {
     return <div className="panel review-loading">Cargando expediente…</div>;
   }
@@ -322,6 +366,53 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
             <small className="hash-copy">SHA-256: {application.promissoryNoteHash}</small>
           ) : null}
         </article>
+      </section>
+
+      <section className="panel admin-payout-panel">
+        <div>
+          <p className="eyebrow">Dispersión del crédito</p>
+          <h2>Cuenta para depósito</h2>
+          <p className="muted">
+            Confirma el nombre del titular y el banco antes de realizar la
+            transferencia.
+          </p>
+        </div>
+
+        {application.client.payoutAccount ? (
+          <div className="admin-payout-account">
+            <div>
+              <span>Banco</span>
+              <strong>{application.client.payoutAccount.bankName}</strong>
+            </div>
+            <div>
+              <span>Titular</span>
+              <strong>{application.client.payoutAccount.accountHolder}</strong>
+            </div>
+            <div>
+              <span>CLABE</span>
+              <code>
+                {revealedPayoutAccount?.clabe ||
+                  application.client.payoutAccount.maskedClabe}
+              </code>
+            </div>
+            {canDecide ? (
+              <button
+                className="button button-primary"
+                type="button"
+                onClick={revealAndCopyClabe}
+                disabled={saving}
+              >
+                {saving ? "Consultando…" : "Mostrar y copiar CLABE"}
+              </button>
+            ) : (
+              <small>Tu rol no permite revelar la CLABE completa.</small>
+            )}
+          </div>
+        ) : (
+          <div className="alert alert-error">
+            El cliente todavía no registra una cuenta para recibir el crédito.
+          </div>
+        )}
       </section>
 
       <section className="review-documents-section">
