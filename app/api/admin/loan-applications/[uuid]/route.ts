@@ -1,7 +1,7 @@
 import type { RowDataPacket } from "mysql2/promise";
 import { NextResponse } from "next/server";
 import { apiErrorResponse, ApiError } from "@/lib/api-error";
-import { maskedClabe } from "@/lib/bank-account";
+import { maskedCardNumber, maskedClabe } from "@/lib/bank-account";
 import { requireApiUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { applicationUuidSchema } from "@/lib/loan-validation";
@@ -45,6 +45,7 @@ type ApplicationRow = RowDataPacket & {
   loan_status: string | null;
   payout_bank_name: string | null;
   payout_account_holder: string | null;
+  payout_card_last4: string | null;
   payout_clabe_last4: string | null;
   payout_updated_at: string | null;
 };
@@ -96,6 +97,7 @@ export async function GET(
               l.uuid AS loan_uuid, l.status AS loan_status,
               cpa.bank_name AS payout_bank_name,
               cpa.account_holder AS payout_account_holder,
+              cpa.card_last4 AS payout_card_last4,
               cpa.clabe_last4 AS payout_clabe_last4,
               cpa.updated_at AS payout_updated_at,
               TRIM(CONCAT_WS(' ', reviewer.first_name, reviewer.paternal_last_name,
@@ -198,12 +200,19 @@ export async function GET(
           postalCode: application.postal_code,
           occupation: application.occupation,
           monthlyIncome: Number(application.monthly_income),
-          payoutAccount: application.payout_clabe_last4
+          payoutAccount:
+            application.payout_card_last4 || application.payout_clabe_last4
             ? {
                 bankName: application.payout_bank_name,
                 accountHolder: application.payout_account_holder,
-                maskedClabe: maskedClabe(application.payout_clabe_last4),
-                last4: application.payout_clabe_last4,
+                maskedCardNumber: application.payout_card_last4
+                  ? maskedCardNumber(application.payout_card_last4)
+                  : null,
+                cardLast4: application.payout_card_last4,
+                maskedClabe: application.payout_clabe_last4
+                  ? maskedClabe(application.payout_clabe_last4)
+                  : null,
+                clabeLast4: application.payout_clabe_last4,
                 updatedAt: application.payout_updated_at,
               }
             : null,

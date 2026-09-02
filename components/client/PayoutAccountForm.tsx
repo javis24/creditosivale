@@ -5,8 +5,10 @@ import { FormEvent, useEffect, useState } from "react";
 type PayoutAccount = {
   bankName: string;
   accountHolder: string;
-  maskedClabe: string;
-  last4: string;
+  maskedCardNumber: string | null;
+  cardLast4: string | null;
+  maskedClabe: string | null;
+  clabeLast4: string | null;
   updatedAt?: string;
 };
 
@@ -14,6 +16,7 @@ export default function PayoutAccountForm() {
   const [account, setAccount] = useState<PayoutAccount | null>(null);
   const [bankName, setBankName] = useState("");
   const [accountHolder, setAccountHolder] = useState("");
+  const [cardNumber, setCardNumber] = useState("");
   const [clabe, setClabe] = useState("");
   const [ownershipConsent, setOwnershipConsent] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -70,6 +73,7 @@ export default function PayoutAccountForm() {
         body: JSON.stringify({
           bankName,
           accountHolder,
+          cardNumber,
           clabe,
           ownershipConsent,
         }),
@@ -80,6 +84,7 @@ export default function PayoutAccountForm() {
       }
 
       setAccount(result.account);
+      setCardNumber("");
       setClabe("");
       setOwnershipConsent(false);
       setMessage(result.message);
@@ -100,11 +105,12 @@ export default function PayoutAccountForm() {
         <p className="eyebrow">Cuenta para recibir el crédito</p>
         <h2>Datos para el depósito</h2>
         <p className="muted">
-          Registra una CLABE interbancaria de 18 dígitos a tu nombre. Se usará
-          únicamente para depositar el crédito que sea autorizado.
+          Registra una tarjeta de débito de 16 dígitos a tu nombre. También
+          puedes agregar tu CLABE interbancaria si la tienes disponible.
         </p>
         <p className="payout-security-note">
-          Nunca escribas número de tarjeta, NIP, CVV ni fecha de vencimiento.
+          Solamente pediremos el número frontal de la tarjeta. Nunca escribas
+          NIP, CVV ni fecha de vencimiento.
         </p>
 
         {account ? (
@@ -112,7 +118,10 @@ export default function PayoutAccountForm() {
             <span>Cuenta registrada</span>
             <strong>{account.bankName}</strong>
             <span>{account.accountHolder}</span>
-            <code>{account.maskedClabe}</code>
+            <code>
+              {account.maskedCardNumber || "Tarjeta pendiente de registrar"}
+            </code>
+            {account.maskedClabe ? <code>CLABE: {account.maskedClabe}</code> : null}
           </div>
         ) : null}
       </div>
@@ -148,18 +157,41 @@ export default function PayoutAccountForm() {
         </label>
 
         <label className="field">
-          <span>{account ? "Nueva CLABE para reemplazar la actual" : "CLABE interbancaria"}</span>
+          <span>
+            {account?.maskedCardNumber
+              ? "Número de tarjeta para reemplazar la actual"
+              : "Número de tarjeta de débito"}
+          </span>
+          <input
+            value={cardNumber}
+            onChange={(event) =>
+              setCardNumber(event.target.value.replace(/\D/g, ""))
+            }
+            placeholder="16 dígitos del frente de la tarjeta"
+            inputMode="numeric"
+            autoComplete="off"
+            minLength={16}
+            maxLength={16}
+            pattern="[0-9]{16}"
+            disabled={loading || saving}
+            required
+          />
+        </label>
+
+        <label className="field">
+          <span>
+            CLABE interbancaria (opcional)
+            {account?.maskedClabe ? " · déjala vacía para conservar la actual" : ""}
+          </span>
           <input
             value={clabe}
             onChange={(event) => setClabe(event.target.value.replace(/\D/g, ""))}
             placeholder="18 dígitos"
             inputMode="numeric"
             autoComplete="off"
-            minLength={18}
             maxLength={18}
-            pattern="[0-9]{18}"
+            pattern="[0-9]{18}|^$"
             disabled={loading || saving}
-            required
           />
         </label>
 
@@ -172,15 +204,21 @@ export default function PayoutAccountForm() {
             required
           />
           <span>
-            Confirmo que la cuenta está a mi nombre y autorizo usarla para
-            depositar mi crédito.
+            Confirmo que la tarjeta y, en su caso, la CLABE pertenecen a una
+            cuenta a mi nombre y autorizo usarlas para depositar mi crédito.
           </span>
         </label>
 
         <button
           className="button button-primary"
           type="submit"
-          disabled={loading || saving || clabe.length !== 18 || !ownershipConsent}
+          disabled={
+            loading ||
+            saving ||
+            cardNumber.length !== 16 ||
+            (clabe.length !== 0 && clabe.length !== 18) ||
+            !ownershipConsent
+          }
         >
           {saving ? "Guardando…" : account ? "Actualizar cuenta" : "Guardar cuenta"}
         </button>

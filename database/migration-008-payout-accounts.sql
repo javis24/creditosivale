@@ -1,5 +1,6 @@
 -- Ejecuta una sola vez en phpMyAdmin después de migration-007.
--- La CLABE se cifra en la aplicación; MySQL nunca recibe el número en texto plano.
+-- La tarjeta y la CLABE se cifran en la aplicación; MySQL no recibe esos
+-- números en texto plano.
 
 CREATE TABLE IF NOT EXISTS client_payout_accounts (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -7,10 +8,14 @@ CREATE TABLE IF NOT EXISTS client_payout_accounts (
   user_id BIGINT UNSIGNED NOT NULL,
   bank_name VARCHAR(120) NOT NULL,
   account_holder VARCHAR(190) NOT NULL,
-  clabe_ciphertext TEXT NOT NULL,
-  clabe_iv VARCHAR(40) NOT NULL,
-  clabe_auth_tag VARCHAR(40) NOT NULL,
-  clabe_last4 CHAR(4) NOT NULL,
+  card_ciphertext TEXT NOT NULL,
+  card_iv VARCHAR(40) NOT NULL,
+  card_auth_tag VARCHAR(40) NOT NULL,
+  card_last4 CHAR(4) NOT NULL,
+  clabe_ciphertext TEXT NULL,
+  clabe_iv VARCHAR(40) NULL,
+  clabe_auth_tag VARCHAR(40) NULL,
+  clabe_last4 CHAR(4) NULL,
   consent_at DATETIME NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -28,6 +33,7 @@ CREATE TABLE IF NOT EXISTS payout_account_events (
   actor_user_id BIGINT UNSIGNED NOT NULL,
   application_id BIGINT UNSIGNED NULL,
   event_type ENUM('account_saved', 'account_revealed') NOT NULL,
+  revealed_field ENUM('card', 'clabe') NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_payout_account_events_account (payout_account_id, created_at),

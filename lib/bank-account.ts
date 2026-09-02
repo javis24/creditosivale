@@ -7,11 +7,35 @@ import { z } from "zod";
 import { ApiError } from "@/lib/api-error";
 
 const ALGORITHM = "aes-256-gcm";
-const AAD = Buffer.from("creditosivale:payout-clabe:v1", "utf8");
+const CLABE_AAD = Buffer.from("creditosivale:payout-clabe:v1", "utf8");
+const CARD_AAD = Buffer.from("creditosivale:payout-card:v1", "utf8");
 const CLABE_WEIGHTS = [3, 7, 1];
 
 export function normalizeClabe(value: string) {
   return value.replace(/\D/g, "");
+}
+
+export function normalizeCardNumber(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+export function isValidCardNumber(value: string) {
+  const cardNumber = normalizeCardNumber(value);
+  if (!/^\d{16}$/.test(cardNumber)) return false;
+
+  const sum = cardNumber
+    .split("")
+    .reverse()
+    .reduce((total, digit, index) => {
+      let number = Number(digit);
+      if (index % 2 === 1) {
+        number *= 2;
+        if (number > 9) number -= 9;
+      }
+      return total + number;
+    }, 0);
+
+  return sum % 10 === 0;
 }
 
 export function isValidClabe(value: string) {
@@ -37,13 +61,24 @@ export const payoutAccountSchema = z.object({
     .trim()
     .min(5, "Escribe el nombre completo del titular.")
     .max(190),
+  cardNumber: z
+    .string()
+    .transform(normalizeCardNumber)
+    .refine((value) => /^\d{16}$/.test(value), {
+      message: "La tarjeta de débito debe tener exactamente 16 dígitos.",
+    })
+    .refine(isValidCardNumber, {
+      message: "El número de tarjeta no es válido. Verifica los 16 dígitos.",
+    }),
   clabe: z
     .string()
+    .optional()
+    .default("")
     .transform(normalizeClabe)
-    .refine((value) => /^\d{18}$/.test(value), {
+    .refine((value) => value === "" || /^\d{18}$/.test(value), {
       message: "La CLABE debe tener exactamente 18 dígitos.",
     })
-    .refine(isValidClabe, {
+    .refine((value) => value === "" || isValidClabe(value), {
       message: "La CLABE no es válida. Verifica los 18 dígitos.",
     }),
   ownershipConsent: z.literal(true, {
@@ -72,17 +107,12 @@ function encryptionKey() {
   return key;
 }
 
-export function encryptClabe(clabe: string) {
-  const normalized = normalizeClabe(clabe);
-  if (!isValidClabe(normalized)) {
-    throw new ApiError(400, "La CLABE no es válida.", "INVALID_CLABE");
-  }
-
+function encryptValue(value: string, aad: Buffer) {
   const iv = randomBytes(12);
   const cipher = createCipheriv(ALGORITHM, encryptionKey(), iv);
-  cipher.setAAD(AAD);
+  cipher.setAAD(aad);
   const ciphertext = Buffer.concat([
-    cipher.update(normalized, "utf8"),
+    cipher.update(value, "utf8"),
     cipher.final(),
   ]);
 
@@ -90,22 +120,22 @@ export function encryptClabe(clabe: string) {
     ciphertext: ciphertext.toString("base64"),
     iv: iv.toString("base64"),
     authTag: cipher.getAuthTag().toString("base64"),
-    last4: normalized.slice(-4),
+    last4: value.slice(-4),
   };
 }
 
-export function decryptClabe(input: {
+function decryptValue(input: {
   ciphertext: string;
   iv: string;
   authTag: string;
-}) {
+}, aad: Buffer, errorMessage: string) {
   try {
     const decipher = createDecipheriv(
       ALGORITHM,
       encryptionKey(),
       Buffer.from(input.iv, "base64"),
     );
-    decipher.setAAD(AAD);
+    decipher.setAAD(aad);
     decipher.setAuthTag(Buffer.from(input.authTag, "base64"));
     return Buffer.concat([
       decipher.update(Buffer.from(input.ciphertext, "base64")),
@@ -115,12 +145,60 @@ export function decryptClabe(input: {
     if (error instanceof ApiError) throw error;
     throw new ApiError(
       500,
-      "No fue posible descifrar la cuenta de depósito.",
+      errorMessage,
       "BANK_DATA_DECRYPTION_FAILED",
     );
   }
 }
 
+export function encryptCardNumber(cardNumber: string) {
+  const normalized = normalizeCardNumber(cardNumber);
+  if (!isValidCardNumber(normalized)) {
+    throw new ApiError(
+      400,
+      "El número de tarjeta no es válido.",
+      "INVALID_CARD_NUMBER",
+    );
+  }
+  return encryptValue(normalized, CARD_AAD);
+}
+
+export function decryptCardNumber(input: {
+  ciphertext: string;
+  iv: string;
+  authTag: string;
+}) {
+  return decryptValue(
+    input,
+    CARD_AAD,
+    "No fue posible descifrar la tarjeta de depósito.",
+  );
+}
+
+export function encryptClabe(clabe: string) {
+  const normalized = normalizeClabe(clabe);
+  if (!isValidClabe(normalized)) {
+    throw new ApiError(400, "La CLABE no es válida.", "INVALID_CLABE");
+  }
+  return encryptValue(normalized, CLABE_AAD);
+}
+
+export function decryptClabe(input: {
+  ciphertext: string;
+  iv: string;
+  authTag: string;
+}) {
+  return decryptValue(
+    input,
+    CLABE_AAD,
+    "No fue posible descifrar la CLABE de depósito.",
+  );
+}
+
 export function maskedClabe(last4: string) {
   return `•••• •••• •••• ••${last4}`;
+}
+
+export function maskedCardNumber(last4: string) {
+  return `•••• •••• •••• ${last4}`;
 }

@@ -61,8 +61,10 @@ type Application = {
     payoutAccount: {
       bankName: string;
       accountHolder: string;
-      maskedClabe: string;
-      last4: string;
+      maskedCardNumber: string | null;
+      cardLast4: string | null;
+      maskedClabe: string | null;
+      clabeLast4: string | null;
       updatedAt: string | null;
     } | null;
   };
@@ -110,11 +112,8 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [revealedPayoutAccount, setRevealedPayoutAccount] = useState<{
-    bankName: string;
-    accountHolder: string;
-    clabe: string;
-  } | null>(null);
+  const [revealedCardNumber, setRevealedCardNumber] = useState("");
+  const [revealedClabe, setRevealedClabe] = useState("");
 
   const loadApplication = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -161,6 +160,15 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
       controller.abort();
     };
   }, [loadApplication]);
+
+  useEffect(() => {
+    if (!revealedCardNumber && !revealedClabe) return;
+    const timer = window.setTimeout(() => {
+      setRevealedCardNumber("");
+      setRevealedClabe("");
+    }, 60_000);
+    return () => window.clearTimeout(timer);
+  }, [revealedCardNumber, revealedClabe]);
 
   const requiredDocumentTypes = useMemo(
     () =>
@@ -250,13 +258,13 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
     }
   }
 
-  async function revealAndCopyClabe() {
+  async function revealAndCopyPayoutField(field: "card" | "clabe") {
     setSaving(true);
     setError("");
     setMessage("");
     try {
       const response = await fetch(
-        `/api/admin/loan-applications/${uuid}/payout-account`,
+        `/api/admin/loan-applications/${uuid}/payout-account?field=${field}`,
         { cache: "no-store" },
       );
       const result = await response.json();
@@ -264,12 +272,20 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
         throw new Error(result.message || "No se pudo consultar la cuenta.");
       }
 
-      setRevealedPayoutAccount(result.account);
+      if (field === "card") {
+        setRevealedCardNumber(result.account.value);
+      } else {
+        setRevealedClabe(result.account.value);
+      }
       try {
-        await navigator.clipboard.writeText(result.account.clabe);
-        setMessage("CLABE copiada. Verifica banco y titular antes de transferir.");
+        await navigator.clipboard.writeText(result.account.value);
+        setMessage(
+          `${field === "card" ? "Tarjeta" : "CLABE"} copiada. Verifica banco y titular antes de transferir.`,
+        );
       } catch {
-        setMessage("CLABE mostrada. Cópiala manualmente y verifica los datos.");
+        setMessage(
+          `${field === "card" ? "Tarjeta" : "CLABE"} mostrada. Cópiala manualmente y verifica los datos.`,
+        );
       }
     } catch (requestError) {
       setError(
@@ -389,24 +405,46 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
               <strong>{application.client.payoutAccount.accountHolder}</strong>
             </div>
             <div>
-              <span>CLABE</span>
+              <span>Tarjeta de débito</span>
               <code>
-                {revealedPayoutAccount?.clabe ||
-                  application.client.payoutAccount.maskedClabe}
+                {revealedCardNumber ||
+                  application.client.payoutAccount.maskedCardNumber ||
+                  "Pendiente de registrar"}
               </code>
             </div>
-            {canDecide ? (
+            {application.client.payoutAccount.maskedClabe ? (
+              <div>
+                <span>CLABE opcional</span>
+                <code>
+                  {revealedClabe || application.client.payoutAccount.maskedClabe}
+                </code>
+              </div>
+            ) : null}
+            {canDecide && application.client.payoutAccount.maskedCardNumber ? (
               <button
                 className="button button-primary"
                 type="button"
-                onClick={revealAndCopyClabe}
+                onClick={() => revealAndCopyPayoutField("card")}
+                disabled={saving}
+              >
+                {saving ? "Consultando…" : "Mostrar y copiar tarjeta"}
+              </button>
+            ) : !canDecide ? (
+              <small>Tu rol no permite revelar los datos bancarios completos.</small>
+            ) : null}
+            {canDecide && application.client.payoutAccount.maskedClabe ? (
+              <button
+                className="button button-secondary"
+                type="button"
+                onClick={() => revealAndCopyPayoutField("clabe")}
                 disabled={saving}
               >
                 {saving ? "Consultando…" : "Mostrar y copiar CLABE"}
               </button>
-            ) : (
-              <small>Tu rol no permite revelar la CLABE completa.</small>
-            )}
+            ) : null}
+            {revealedCardNumber || revealedClabe ? (
+              <small>Los números completos se ocultarán automáticamente en 60 segundos.</small>
+            ) : null}
           </div>
         ) : (
           <div className="alert alert-error">

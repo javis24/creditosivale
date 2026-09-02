@@ -3,7 +3,9 @@ import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/prom
 import { NextResponse } from "next/server";
 import { apiErrorResponse, ApiError } from "@/lib/api-error";
 import {
+  encryptCardNumber,
   encryptClabe,
+  maskedCardNumber,
   maskedClabe,
   payoutAccountSchema,
 } from "@/lib/bank-account";
@@ -17,15 +19,23 @@ type AccountRow = RowDataPacket & {
   id: number;
   bank_name: string;
   account_holder: string;
-  clabe_last4: string;
+  card_last4: string | null;
+  clabe_last4: string | null;
   updated_at: string;
+};
+
+type ExistingClabeRow = RowDataPacket & {
+  clabe_ciphertext: string | null;
+  clabe_iv: string | null;
+  clabe_auth_tag: string | null;
+  clabe_last4: string | null;
 };
 
 export async function GET() {
   try {
     const user = await requireApiUser(["cliente"]);
     const [rows] = await getDb().execute<AccountRow[]>(
-      `SELECT id, bank_name, account_holder, clabe_last4, updated_at
+      `SELECT id, bank_name, account_holder, card_last4, clabe_last4, updated_at
          FROM client_payout_accounts
         WHERE user_id = ?
         LIMIT 1`,
@@ -39,8 +49,14 @@ export async function GET() {
         ? {
             bankName: account.bank_name,
             accountHolder: account.account_holder,
-            maskedClabe: maskedClabe(account.clabe_last4),
-            last4: account.clabe_last4,
+            maskedCardNumber: account.card_last4
+              ? maskedCardNumber(account.card_last4)
+              : null,
+            cardLast4: account.card_last4,
+            maskedClabe: account.clabe_last4
+              ? maskedClabe(account.clabe_last4)
+              : null,
+            clabeLast4: account.clabe_last4,
             updatedAt: account.updated_at,
           }
         : null,
@@ -59,20 +75,48 @@ export async function PUT(request: Request) {
       throw new ApiError(400, "Los datos enviados no son válidos.", "INVALID_JSON");
     });
     const data = payoutAccountSchema.parse(body);
-    const encrypted = encryptClabe(data.clabe);
+    const encryptedCard = encryptCardNumber(data.cardNumber);
+    const encryptedClabe = data.clabe ? encryptClabe(data.clabe) : null;
 
     connection = await getDb().getConnection();
     await connection.beginTransaction();
 
+    const [existingRows] = await connection.execute<ExistingClabeRow[]>(
+      `SELECT clabe_ciphertext, clabe_iv, clabe_auth_tag, clabe_last4
+         FROM client_payout_accounts
+        WHERE user_id = ?
+        LIMIT 1
+        FOR UPDATE`,
+      [user.id],
+    );
+    const existingClabe = existingRows[0];
+    const savedClabe = encryptedClabe ||
+      (existingClabe?.clabe_ciphertext &&
+      existingClabe.clabe_iv &&
+      existingClabe.clabe_auth_tag &&
+      existingClabe.clabe_last4
+        ? {
+            ciphertext: existingClabe.clabe_ciphertext,
+            iv: existingClabe.clabe_iv,
+            authTag: existingClabe.clabe_auth_tag,
+            last4: existingClabe.clabe_last4,
+          }
+        : null);
+
     const [result] = await connection.execute<ResultSetHeader>(
       `INSERT INTO client_payout_accounts (
          uuid, user_id, bank_name, account_holder,
+         card_ciphertext, card_iv, card_auth_tag, card_last4,
          clabe_ciphertext, clabe_iv, clabe_auth_tag, clabe_last4, consent_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
        ON DUPLICATE KEY UPDATE
          id = LAST_INSERT_ID(id),
          bank_name = VALUES(bank_name),
          account_holder = VALUES(account_holder),
+         card_ciphertext = VALUES(card_ciphertext),
+         card_iv = VALUES(card_iv),
+         card_auth_tag = VALUES(card_auth_tag),
+         card_last4 = VALUES(card_last4),
          clabe_ciphertext = VALUES(clabe_ciphertext),
          clabe_iv = VALUES(clabe_iv),
          clabe_auth_tag = VALUES(clabe_auth_tag),
@@ -83,17 +127,21 @@ export async function PUT(request: Request) {
         user.id,
         data.bankName,
         data.accountHolder,
-        encrypted.ciphertext,
-        encrypted.iv,
-        encrypted.authTag,
-        encrypted.last4,
+        encryptedCard.ciphertext,
+        encryptedCard.iv,
+        encryptedCard.authTag,
+        encryptedCard.last4,
+        savedClabe?.ciphertext ?? null,
+        savedClabe?.iv ?? null,
+        savedClabe?.authTag ?? null,
+        savedClabe?.last4 ?? null,
       ],
     );
 
     await connection.execute(
       `INSERT INTO payout_account_events
-        (payout_account_id, actor_user_id, application_id, event_type)
-       VALUES (?, ?, NULL, 'account_saved')`,
+        (payout_account_id, actor_user_id, application_id, event_type, revealed_field)
+       VALUES (?, ?, NULL, 'account_saved', NULL)`,
       [result.insertId, user.id],
     );
     await connection.commit();
@@ -104,8 +152,10 @@ export async function PUT(request: Request) {
       account: {
         bankName: data.bankName,
         accountHolder: data.accountHolder,
-        maskedClabe: maskedClabe(encrypted.last4),
-        last4: encrypted.last4,
+        maskedCardNumber: maskedCardNumber(encryptedCard.last4),
+        cardLast4: encryptedCard.last4,
+        maskedClabe: savedClabe ? maskedClabe(savedClabe.last4) : null,
+        clabeLast4: savedClabe?.last4 ?? null,
       },
     });
   } catch (error) {

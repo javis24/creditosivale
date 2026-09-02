@@ -2,8 +2,12 @@ import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   decryptClabe,
+  decryptCardNumber,
+  encryptCardNumber,
   encryptClabe,
+  isValidCardNumber,
   isValidClabe,
+  maskedCardNumber,
   maskedClabe,
   payoutAccountSchema,
 } from "../lib/bank-account";
@@ -21,6 +25,7 @@ function clabeWithCheckDigit(first17Digits: string) {
 }
 
 const validClabe = clabeWithCheckDigit("01218000123456789");
+const validTestCard = "4111111111111111";
 
 beforeAll(() => {
   process.env.BANK_DATA_ENCRYPTION_KEY = randomBytes(32).toString("base64");
@@ -35,6 +40,11 @@ afterAll(() => {
 });
 
 describe("CLABE de depósito", () => {
+  it("valida una tarjeta de prueba con algoritmo de Luhn", () => {
+    expect(isValidCardNumber(validTestCard)).toBe(true);
+    expect(isValidCardNumber("4111111111111112")).toBe(false);
+  });
+
   it("acepta una CLABE con dígito verificador correcto", () => {
     expect(validClabe).toHaveLength(18);
     expect(isValidClabe(validClabe)).toBe(true);
@@ -50,10 +60,29 @@ describe("CLABE de depósito", () => {
     const result = payoutAccountSchema.parse({
       bankName: "Banco de prueba",
       accountHolder: "Cliente de Prueba",
+      cardNumber: validTestCard,
       clabe: spacedClabe,
       ownershipConsent: true,
     });
     expect(result.clabe).toBe(validClabe);
+  });
+
+  it("permite omitir la CLABE", () => {
+    const result = payoutAccountSchema.parse({
+      bankName: "Banco de prueba",
+      accountHolder: "Cliente de Prueba",
+      cardNumber: validTestCard,
+      ownershipConsent: true,
+    });
+    expect(result.clabe).toBe("");
+  });
+
+  it("cifra y descifra la tarjeta sin guardarla en texto plano", () => {
+    const encrypted = encryptCardNumber(validTestCard);
+    expect(encrypted.ciphertext).not.toContain(validTestCard);
+    expect(encrypted.last4).toBe("1111");
+    expect(decryptCardNumber(encrypted)).toBe(validTestCard);
+    expect(maskedCardNumber(encrypted.last4)).toBe("•••• •••• •••• 1111");
   });
 
   it("cifra y descifra sin guardar la CLABE en texto plano", () => {
