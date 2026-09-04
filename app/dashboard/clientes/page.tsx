@@ -22,7 +22,7 @@ export default async function ClientsPage() {
           Registrar cliente
         </Link>
       </div>
-      <ClientList />
+      <ClientList canManageClients={user.role === "admin"} />
     </main>
   );
 }

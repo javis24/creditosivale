@@ -28,7 +28,7 @@ const money = new Intl.NumberFormat("es-MX", {
   maximumFractionDigits: 0,
 });
 
-export default function ClientList() {
+export default function ClientList({ canManageClients }: { canManageClients: boolean }) {
   const [clients, setClients] = useState<Client[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1,
@@ -117,14 +117,15 @@ export default function ClientList() {
               <th>Ingreso mensual</th>
               <th>Ubicación</th>
               <th>Estado</th>
+              {canManageClients ? <th>Acciones</th> : null}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} className="empty-state">Cargando clientes…</td></tr>
+              <tr><td colSpan={canManageClients ? 7 : 6} className="empty-state">Cargando clientes…</td></tr>
             ) : clients.length === 0 ? (
               <tr>
-                <td colSpan={6} className="empty-state">
+                <td colSpan={canManageClients ? 7 : 6} className="empty-state">
                   <strong>Aún no hay clientes.</strong>
                   <span>Registra el primer expediente para comenzar.</span>
                 </td>
@@ -138,6 +139,13 @@ export default function ClientList() {
                   <td>{client.monthlyIncome == null ? "—" : money.format(client.monthlyIncome)}</td>
                   <td>{[client.city, client.state].filter(Boolean).join(", ") || "—"}</td>
                   <td><span className={`status status-${client.status}`}>{client.status}</span></td>
+                  {canManageClients ? (
+                    <td>
+                      <Link className="button button-secondary button-small" href={`/dashboard/clientes/${client.uuid}`}>
+                        Editar
+                      </Link>
+                    </td>
+                  ) : null}
                 </tr>
               ))
             )}

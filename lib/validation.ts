@@ -7,6 +7,11 @@ const optionalText = (max: number) =>
     z.string().trim().max(max).nullable().optional(),
   );
 
+const optionalEmail = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+  z.email("Escribe un correo válido.").trim().toLowerCase().nullable().optional(),
+);
+
 const phone = z
   .string()
   .trim()
@@ -153,6 +158,51 @@ export const listUsersSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   q: z.string().trim().max(100).default(""),
   role: z.enum(roles).optional(),
+});
+
+export const updateClientSchema = z.object({
+  firstName: z.string().trim().min(2, "Escribe el nombre.").max(100),
+  paternalLastName: z.string().trim().max(100).default(""),
+  maternalLastName: optionalText(100),
+  email: optionalEmail,
+  phone,
+  status: z.enum(["activo", "inactivo", "bloqueado"]),
+  birthDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Selecciona la fecha de nacimiento.")
+    .refine(isAdult, "El cliente debe tener entre 18 y 100 años."),
+  curp: clientFields.curp,
+  rfc: clientFields.rfc,
+  ineNumber: clientFields.ineNumber,
+  gender: clientFields.gender,
+  maritalStatus: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+    clientFields.maritalStatus.nullable().optional(),
+  ),
+  occupation: optionalText(150),
+  companyName: clientFields.companyName,
+  monthlyIncome: z.coerce
+    .number()
+    .min(0, "El ingreso no puede ser negativo.")
+    .max(9999999999.99),
+  address: optionalText(500),
+  street: optionalText(190),
+  exteriorNumber: optionalText(20),
+  interiorNumber: clientFields.interiorNumber,
+  neighborhood: optionalText(150),
+  postalCode: clientFields.postalCode,
+  city: optionalText(120),
+  state: optionalText(120),
+  country: z.string().trim().min(2).max(80).default("México"),
+  emergencyContactName: clientFields.emergencyContactName,
+  emergencyContactPhone: clientFields.emergencyContactPhone,
+  notes: clientFields.notes,
+});
+
+export const deleteClientSchema = z.object({
+  confirmation: z.literal("ELIMINAR", {
+    error: "Escribe ELIMINAR para confirmar.",
+  }),
 });
 
 export const uuidSchema = z.uuid("El identificador no es válido.");

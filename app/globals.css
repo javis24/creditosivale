@@ -1825,6 +1825,45 @@ td small {
   gap: 18px;
 }
 
+.client-admin-editor {
+  display: grid;
+  gap: 24px;
+}
+
+.client-danger-zone {
+  display: grid;
+  padding: 26px;
+  border-color: #fac5c0;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.7fr);
+  align-items: end;
+  gap: 28px;
+}
+
+.client-danger-zone h2 {
+  color: var(--red-700);
+}
+
+.client-history-summary {
+  display: flex;
+  margin-top: 18px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.client-history-summary span {
+  padding: 7px 10px;
+  border-radius: 999px;
+  color: var(--slate-700);
+  background: var(--slate-100);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.client-delete-confirmation {
+  display: grid;
+  gap: 12px;
+}
+
 .form-alert {
   position: sticky;
   top: 12px;
@@ -2544,6 +2583,10 @@ td small {
   .payment-form-panel,
   .payout-account-panel,
   .admin-payout-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .client-danger-zone {
     grid-template-columns: 1fr;
   }
 
