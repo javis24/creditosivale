@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { deleteClientSchema, updateClientSchema } from "@/lib/validation";
+import { canPermanentlyDeleteClient } from "@/lib/client-admin";
 
 const validClient = {
   firstName: "Manases",
@@ -52,5 +53,11 @@ describe("administración de clientes", () => {
   it("exige la confirmación literal para eliminar", () => {
     expect(deleteClientSchema.safeParse({ confirmation: "eliminar" }).success).toBe(false);
     expect(deleteClientSchema.safeParse({ confirmation: "ELIMINAR" }).success).toBe(true);
+  });
+
+  it("permite eliminar procesos sin pagos y bloquea los que ya tienen abonos", () => {
+    expect(canPermanentlyDeleteClient(0)).toBe(true);
+    expect(canPermanentlyDeleteClient(1)).toBe(false);
+    expect(canPermanentlyDeleteClient("2")).toBe(false);
   });
 });

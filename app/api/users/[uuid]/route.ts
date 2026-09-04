@@ -1,8 +1,10 @@
+import { del } from "@vercel/blob";
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { NextResponse } from "next/server";
 import { apiErrorResponse, ApiError } from "@/lib/api-error";
 import { requireApiUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { canPermanentlyDeleteClient } from "@/lib/client-admin";
 import { normalizeMexicanWhatsapp } from "@/lib/phone";
 import {
   deleteClientSchema,
@@ -11,10 +13,12 @@ import {
 } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 type UserDetailRow = RowDataPacket & Record<string, string | number | null>;
 type TargetRow = RowDataPacket & { id: number; role: string };
 type CountRow = RowDataPacket & { total: number };
+type DocumentBlobRow = RowDataPacket & { blob_url: string };
 
 async function findTargetForUpdate(connection: PoolConnection, uuid: string) {
   const [rows] = await connection.execute<TargetRow[]>(
@@ -196,20 +200,42 @@ export async function DELETE(
     await connection.beginTransaction();
     const target = await findTargetForUpdate(connection, uuid);
 
-    const [applicationRows] = await connection.execute<CountRow[]>(
-      `SELECT COUNT(*) AS total
-         FROM loan_applications
-        WHERE user_id = ?`,
+    // Bloquea los créditos antes de comprobar pagos para evitar que se registre
+    // un abono mientras se elimina el expediente.
+    await connection.execute(
+      `SELECT id FROM loans WHERE user_id = ? FOR UPDATE`,
       [target.id],
     );
 
-    if (Number(applicationRows[0]?.total || 0) > 0) {
+    const [paymentRows] = await connection.execute<CountRow[]>(
+      `SELECT COUNT(*) AS total
+         FROM loan_payments lp
+         INNER JOIN loans l ON l.id = lp.loan_id
+        WHERE l.user_id = ?`,
+      [target.id],
+    );
+    const paymentCount = Number(paymentRows[0]?.total || 0);
+
+    if (!canPermanentlyDeleteClient(paymentCount)) {
       throw new ApiError(
         409,
-        "Este cliente ya tiene historial de solicitudes. Desactiva su cuenta en lugar de eliminarla.",
-        "CLIENT_HAS_FINANCIAL_HISTORY",
+        "Este cliente ya tiene pagos registrados. Desactiva su cuenta en lugar de eliminarla.",
+        "CLIENT_HAS_PAYMENTS",
       );
     }
+
+    const [documentRows] = await connection.execute<DocumentBlobRow[]>(
+      `SELECT cd.blob_url
+         FROM client_documents cd
+         INNER JOIN loan_applications la ON la.id = cd.application_id
+        WHERE la.user_id = ?`,
+      [target.id],
+    );
+
+    // El orden respeta las llaves foráneas: primero créditos, después
+    // solicitudes y finalmente la cuenta del cliente.
+    await connection.execute(`DELETE FROM loans WHERE user_id = ?`, [target.id]);
+    await connection.execute(`DELETE FROM loan_applications WHERE user_id = ?`, [target.id]);
 
     await connection.execute(
       `DELETE FROM payout_account_events WHERE actor_user_id = ?`,
@@ -230,9 +256,20 @@ export async function DELETE(
 
     await connection.commit();
 
+    const blobUrls = [...new Set(documentRows.map((row) => row.blob_url).filter(Boolean))];
+    if (blobUrls.length) {
+      try {
+        await del(blobUrls);
+      } catch (cleanupError) {
+        // El expediente ya no es accesible desde la aplicación. Se registra el
+        // fallo para poder limpiar posteriormente cualquier blob huérfano.
+        console.error("Could not delete client private blobs:", cleanupError);
+      }
+    }
+
     return NextResponse.json({
       ok: true,
-      message: "La cuenta del cliente fue eliminada definitivamente.",
+      message: "La cuenta y todo el proceso del cliente fueron eliminados definitivamente.",
     });
   } catch (error) {
     if (connection) await connection.rollback();

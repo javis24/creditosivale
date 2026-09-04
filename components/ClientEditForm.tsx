@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { canPermanentlyDeleteClient } from "@/lib/client-admin";
 
 type ClientDetail = {
   uuid: string;
@@ -137,7 +138,7 @@ export default function ClientEditForm({ uuid }: { uuid: string }) {
   if (loading) return <section className="panel review-loading">Cargando expediente…</section>;
   if (!client) return <div className="alert alert-error">{error || "Cliente no encontrado."}</div>;
 
-  const hasHistory = Number(client.application_count) > 0;
+  const deletionBlocked = !canPermanentlyDeleteClient(client.payment_count);
 
   return (
     <div className="client-admin-editor">
@@ -254,9 +255,9 @@ export default function ClientEditForm({ uuid }: { uuid: string }) {
           <p className="eyebrow">Zona de peligro</p>
           <h2>Eliminar cuenta definitivamente</h2>
           <p className="muted">
-            {hasHistory
-              ? "Este cliente ya tiene historial financiero y no puede eliminarse. Puedes cambiar su estado a Inactivo."
-              : "Se eliminarán su cuenta, perfil y datos bancarios. Esta acción no se puede deshacer."}
+            {deletionBlocked
+              ? "Este cliente ya tiene pagos registrados y no puede eliminarse. Puedes cambiar su estado a Inactivo."
+              : "Se eliminarán su cuenta, solicitudes, créditos, calendario, documentos privados y datos bancarios. Esta acción no se puede deshacer."}
           </p>
           <div className="client-history-summary">
             <span>{Number(client.application_count)} solicitudes</span>
@@ -270,7 +271,7 @@ export default function ClientEditForm({ uuid }: { uuid: string }) {
             <input
               value={confirmation}
               onChange={(event) => setConfirmation(event.target.value)}
-              disabled={hasHistory || deleting}
+              disabled={deletionBlocked || deleting}
               autoComplete="off"
             />
           </label>
@@ -278,7 +279,7 @@ export default function ClientEditForm({ uuid }: { uuid: string }) {
             type="button"
             className="button button-danger"
             onClick={deleteClient}
-            disabled={hasHistory || confirmation !== "ELIMINAR" || deleting || saving}
+            disabled={deletionBlocked || confirmation !== "ELIMINAR" || deleting || saving}
           >
             {deleting ? "Eliminando…" : "Eliminar cliente"}
           </button>
