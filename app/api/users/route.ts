@@ -6,6 +6,7 @@ import { apiErrorResponse, ApiError } from "@/lib/api-error";
 import { requireApiUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { createUserSchema, listUsersSchema } from "@/lib/validation";
+import { getClientProcess } from "@/lib/client-process";
 import type { Role } from "@/types/auth";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,16 @@ type UserListRow = RowDataPacket & {
   city: string | null;
   state: string | null;
   created_at: string;
+  application_uuid: string | null;
+  application_status: string | null;
+  flow_version: number | null;
+  document_count: number;
+  verified_document_count: number;
+  loan_uuid: string | null;
+  loan_status: string | null;
+  term_fortnights: number | null;
+  paid_installments: number;
+  next_due_date: string | null;
 };
 
 type CountRow = RowDataPacket & { total: number };
@@ -69,9 +80,27 @@ export async function GET(request: Request) {
     const [rows] = await db.execute<UserListRow[]>(
       `SELECT u.uuid, u.first_name, u.paternal_last_name, u.maternal_last_name,
               u.email, u.phone, u.role, u.status, u.created_at,
-              cp.birth_date, cp.occupation, cp.monthly_income, cp.city, cp.state
+              cp.birth_date, cp.occupation, cp.monthly_income, cp.city, cp.state,
+              la.uuid AS application_uuid, la.status AS application_status,
+              la.flow_version,
+              (SELECT COUNT(*) FROM client_documents cd
+                WHERE cd.application_id = la.id) AS document_count,
+              (SELECT COUNT(*) FROM client_documents cd
+                WHERE cd.application_id = la.id
+                  AND cd.verification_status = 'verificado') AS verified_document_count,
+              l.uuid AS loan_uuid, l.status AS loan_status, l.term_fortnights,
+              (SELECT COUNT(*) FROM loan_installments li
+                WHERE li.loan_id = l.id AND li.status = 'pagado') AS paid_installments,
+              (SELECT MIN(li.due_date) FROM loan_installments li
+                WHERE li.loan_id = l.id AND li.amount_paid < li.amount_due) AS next_due_date
          FROM users u
          LEFT JOIN client_profiles cp ON cp.user_id = u.id
+         LEFT JOIN loan_applications la ON la.id = (
+           SELECT MAX(la2.id)
+             FROM loan_applications la2
+            WHERE la2.user_id = u.id
+         )
+         LEFT JOIN loans l ON l.application_id = la.id
          ${whereSql}
         ORDER BY u.created_at DESC
         LIMIT ? OFFSET ?`,
@@ -97,6 +126,21 @@ export async function GET(request: Request) {
         city: row.city,
         state: row.state,
         createdAt: row.created_at,
+        applicationUuid: row.application_uuid,
+        loanUuid: row.loan_uuid,
+        process:
+          row.role === "cliente"
+            ? getClientProcess({
+                applicationStatus: row.application_status,
+                loanStatus: row.loan_status,
+                documentCount: Number(row.document_count || 0),
+                verifiedDocumentCount: Number(row.verified_document_count || 0),
+                requiredDocumentCount: Number(row.flow_version) === 1 ? 5 : 4,
+                paidInstallments: Number(row.paid_installments || 0),
+                termFortnights: row.term_fortnights,
+                nextDueDate: row.next_due_date,
+              })
+            : null,
       })),
       pagination: {
         page: filters.page,

@@ -5,6 +5,7 @@ import { apiErrorResponse, ApiError } from "@/lib/api-error";
 import { requireApiUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { canPermanentlyDeleteClient } from "@/lib/client-admin";
+import { getClientProcess } from "@/lib/client-process";
 import { normalizeMexicanWhatsapp } from "@/lib/phone";
 import {
   deleteClientSchema,
@@ -19,6 +20,25 @@ type UserDetailRow = RowDataPacket & Record<string, string | number | null>;
 type TargetRow = RowDataPacket & { id: number; role: string };
 type CountRow = RowDataPacket & { total: number };
 type DocumentBlobRow = RowDataPacket & { blob_url: string };
+type ClientProcessRow = RowDataPacket & {
+  application_uuid: string;
+  application_status: string;
+  flow_version: number;
+  requested_amount: number;
+  offered_amount: number | null;
+  offered_fortnight_payment: number | null;
+  offered_term_fortnights: number | null;
+  document_count: number;
+  verified_document_count: number;
+  loan_uuid: string | null;
+  loan_status: string | null;
+  principal: number | null;
+  installment_amount: number | null;
+  term_fortnights: number | null;
+  paid_installments: number;
+  next_due_date: string | null;
+  next_due_balance: number | null;
+};
 
 async function findTargetForUpdate(connection: PoolConnection, uuid: string) {
   const [rows] = await connection.execute<TargetRow[]>(
@@ -77,7 +97,70 @@ export async function GET(
 
     if (!user) throw new ApiError(404, "Usuario no encontrado.", "NOT_FOUND");
 
-    return NextResponse.json({ ok: true, user });
+    const [processRows] = await getDb().execute<ClientProcessRow[]>(
+      `SELECT la.uuid AS application_uuid, la.status AS application_status,
+              la.flow_version, la.requested_amount, la.offered_amount,
+              la.offered_fortnight_payment, la.offered_term_fortnights,
+              (SELECT COUNT(*) FROM client_documents cd
+                WHERE cd.application_id = la.id) AS document_count,
+              (SELECT COUNT(*) FROM client_documents cd
+                WHERE cd.application_id = la.id
+                  AND cd.verification_status = 'verificado') AS verified_document_count,
+              l.uuid AS loan_uuid, l.status AS loan_status, l.principal,
+              l.installment_amount, l.term_fortnights,
+              (SELECT COUNT(*) FROM loan_installments li
+                WHERE li.loan_id = l.id AND li.status = 'pagado') AS paid_installments,
+              (SELECT MIN(li.due_date) FROM loan_installments li
+                WHERE li.loan_id = l.id AND li.amount_paid < li.amount_due) AS next_due_date,
+              (SELECT li.amount_due - li.amount_paid
+                 FROM loan_installments li
+                WHERE li.loan_id = l.id AND li.amount_paid < li.amount_due
+                ORDER BY li.installment_number
+                LIMIT 1) AS next_due_balance
+         FROM loan_applications la
+         INNER JOIN users u ON u.id = la.user_id
+         LEFT JOIN loans l ON l.application_id = la.id
+        WHERE u.uuid = ?
+        ORDER BY la.created_at DESC, la.id DESC
+        LIMIT 1`,
+      [uuid],
+    );
+    const processRow = processRows[0];
+    const process = getClientProcess({
+      applicationStatus: processRow?.application_status,
+      loanStatus: processRow?.loan_status,
+      documentCount: Number(processRow?.document_count || 0),
+      verifiedDocumentCount: Number(processRow?.verified_document_count || 0),
+      requiredDocumentCount: Number(processRow?.flow_version) === 1 ? 5 : 4,
+      paidInstallments: Number(processRow?.paid_installments || 0),
+      termFortnights: processRow?.term_fortnights,
+      nextDueDate: processRow?.next_due_date,
+    });
+
+    return NextResponse.json({
+      ok: true,
+      user: {
+        ...user,
+        process,
+        application_uuid: processRow?.application_uuid || null,
+        loan_uuid: processRow?.loan_uuid || null,
+        process_amount: Number(
+          processRow?.principal || processRow?.offered_amount || processRow?.requested_amount || 0,
+        ),
+        process_installment_amount: Number(
+          processRow?.installment_amount || processRow?.offered_fortnight_payment || 0,
+        ),
+        process_term_fortnights: Number(
+          processRow?.term_fortnights || processRow?.offered_term_fortnights || 0,
+        ),
+        process_paid_installments: Number(processRow?.paid_installments || 0),
+        process_next_due_date: processRow?.next_due_date || null,
+        process_next_due_balance:
+          processRow?.next_due_balance === null || processRow?.next_due_balance === undefined
+            ? null
+            : Number(processRow.next_due_balance),
+      },
+    });
   } catch (error) {
     return apiErrorResponse(error);
   }

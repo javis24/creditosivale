@@ -1,6 +1,8 @@
 "use client";
 
 import { normalizeMexicanWhatsapp } from "@/lib/phone";
+import type { ClientProcessKey } from "@/lib/client-process";
+import { buildProcessWhatsAppMessage } from "@/lib/whatsapp-messages";
 
 type BaseProps = {
   phone: string | null;
@@ -54,13 +56,17 @@ function firstName(fullName: string) {
 function WhatsAppButton({
   url,
   children,
+  compact = false,
 }: {
   url: string | null;
   children: React.ReactNode;
+  compact?: boolean;
 }) {
+  const className = `button button-whatsapp${compact ? " button-small" : ""}`;
+
   if (!url) {
     return (
-      <span className="button button-whatsapp button-disabled" title="WhatsApp no válido">
+      <span className={`${className} button-disabled`} title="WhatsApp no válido">
         WhatsApp no disponible
       </span>
     );
@@ -68,13 +74,51 @@ function WhatsAppButton({
 
   return (
     <a
-      className="button button-whatsapp"
+      className={className}
       href={url}
       target="_blank"
       rel="noopener noreferrer"
     >
       {children}
     </a>
+  );
+}
+
+export function WhatsAppProcessNotice({
+  phone,
+  clientName,
+  process,
+  amount,
+  installmentAmount,
+  termFortnights,
+  installmentNumber,
+  dueDate,
+  compact = false,
+  label = "Enviar WhatsApp",
+}: BaseProps & {
+  process: ClientProcessKey;
+  amount?: number | null;
+  installmentAmount?: number | null;
+  termFortnights?: number | null;
+  installmentNumber?: number | null;
+  dueDate?: string | null;
+  compact?: boolean;
+  label?: string;
+}) {
+  const message = buildProcessWhatsAppMessage({
+    process,
+    clientName,
+    amount,
+    installmentAmount,
+    termFortnights,
+    installmentNumber,
+    dueDate,
+  });
+
+  return (
+    <WhatsAppButton url={whatsappUrl(phone, message)} compact={compact}>
+      {label}
+    </WhatsAppButton>
   );
 }
 

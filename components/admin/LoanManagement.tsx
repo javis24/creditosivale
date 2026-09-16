@@ -2,10 +2,9 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import {
-  WhatsAppApprovalNotice,
-  WhatsAppPaymentReminder,
-} from "@/components/admin/WhatsAppActions";
+import ClientProcessTracker from "@/components/admin/ClientProcessTracker";
+import { WhatsAppProcessNotice } from "@/components/admin/WhatsAppActions";
+import { getClientProcess } from "@/lib/client-process";
 
 type Installment = {
   uuid: string;
@@ -216,6 +215,16 @@ export default function LoanManagement({ uuid }: { uuid: string }) {
   const progress = loan.totalDue
     ? Math.min(100, Math.round((loan.amountPaid / loan.totalDue) * 100))
     : 0;
+  const paidInstallments = loan.installments.filter(
+    (item) => item.status === "pagado",
+  ).length;
+  const process = getClientProcess({
+    applicationStatus: "aprobado",
+    loanStatus: loan.status,
+    paidInstallments,
+    termFortnights: loan.termFortnights,
+    nextDueDate: currentInstallment?.dueDate,
+  });
 
   return (
     <div className="loan-management">
@@ -248,6 +257,8 @@ export default function LoanManagement({ uuid }: { uuid: string }) {
         </div>
       </section>
 
+      <ClientProcessTracker process={process} />
+
       <section className="loan-stat-grid">
         <article className="panel loan-stat">
           <span>Pago quincenal</span>
@@ -271,50 +282,32 @@ export default function LoanManagement({ uuid }: { uuid: string }) {
         </article>
       </section>
 
-      {loan.status === "pendiente_desembolso" ? (
-        <section className="panel whatsapp-action-panel">
-          <div>
-            <p className="eyebrow">Aviso por WhatsApp</p>
-            <h2>Notificar autorización</h2>
-            <p className="muted">
-              Envía al cliente el monto autorizado, pago quincenal y plazo.
-            </p>
-          </div>
-          <WhatsAppApprovalNotice
-            phone={loan.client.phone}
-            clientName={loan.client.name}
-            approvedAmount={loan.principal}
-            installmentAmount={loan.installmentAmount}
-            termFortnights={loan.termFortnights}
-          />
-        </section>
-      ) : null}
-
-      {loan.status === "activo" && currentInstallment ? (
-        <section className="panel whatsapp-action-panel">
-          <div>
-            <p className="eyebrow">Recordatorio por WhatsApp</p>
-            <h2>Próximo pago: {formatDate(currentInstallment.dueDate)}</h2>
-            <p className="muted">
-              Pago {currentInstallment.installmentNumber} de {loan.termFortnights} por{" "}
-              {money.format(
-                Math.max(0, currentInstallment.amountDue - currentInstallment.amountPaid),
-              )}.
-            </p>
-          </div>
-          <WhatsAppPaymentReminder
-            phone={loan.client.phone}
-            clientName={loan.client.name}
-            amount={Math.max(
-              0,
-              currentInstallment.amountDue - currentInstallment.amountPaid,
-            )}
-            dueDate={currentInstallment.dueDate}
-            installmentNumber={currentInstallment.installmentNumber}
-            termFortnights={loan.termFortnights}
-          />
-        </section>
-      ) : null}
+      <section className="panel whatsapp-action-panel">
+        <div>
+          <p className="eyebrow">WhatsApp del proceso</p>
+          <h2>{process.title}</h2>
+          <p className="muted">
+            {loan.status === "activo" && currentInstallment
+              ? `Pago ${currentInstallment.installmentNumber} de ${loan.termFortnights}, con vencimiento ${formatDate(currentInstallment.dueDate)}.`
+              : process.description}
+          </p>
+        </div>
+        <WhatsAppProcessNotice
+          phone={loan.client.phone}
+          clientName={loan.client.name}
+          process={process.key}
+          amount={loan.principal}
+          installmentAmount={
+            currentInstallment
+              ? Math.max(0, currentInstallment.amountDue - currentInstallment.amountPaid)
+              : loan.installmentAmount
+          }
+          termFortnights={loan.termFortnights}
+          installmentNumber={currentInstallment?.installmentNumber}
+          dueDate={currentInstallment?.dueDate}
+          label="Enviar WhatsApp al cliente"
+        />
+      </section>
 
       {loan.status === "pendiente_desembolso" ? (
         <section className="panel loan-action-panel">
@@ -420,7 +413,7 @@ export default function LoanManagement({ uuid }: { uuid: string }) {
             <p className="eyebrow">Calendario</p>
             <h2>Quincenas del crédito</h2>
           </div>
-          <strong>{loan.installments.filter((item) => item.status === "pagado").length}/{loan.termFortnights} pagadas</strong>
+          <strong>{paidInstallments}/{loan.termFortnights} pagadas</strong>
         </div>
         {loan.installments.length ? (
           <div className="table-wrap">

@@ -6,6 +6,7 @@ const requiredTables = [
   "credit_options",
   "loan_applications",
   "client_documents",
+  "application_events",
   "loans",
   "loan_installments",
   "loan_payments",
@@ -69,6 +70,22 @@ try {
   if (collations.size > 1) {
     issues.push(
       `Las tablas usan collations diferentes: ${[...collations].join(", ")}.`,
+    );
+  }
+
+  const [columnCollationRows] = await connection.execute(
+    `SELECT DISTINCT COLLATION_NAME AS collation_name
+       FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = ?
+        AND COLLATION_NAME IS NOT NULL`,
+    [process.env.DB_NAME],
+  );
+  const columnCollations = columnCollationRows
+    .map((row) => row.collation_name)
+    .filter(Boolean);
+  if (columnCollations.length > 1) {
+    issues.push(
+      `Las columnas de texto usan collations diferentes: ${columnCollations.join(", ")}. Unifica todo en utf8mb4_unicode_ci.`,
     );
   }
 
@@ -194,6 +211,76 @@ try {
         `Hay ${inconsistentLoans.length} créditos con calendario o saldo inconsistente: ${inconsistentLoans.map((row) => row.uuid).join(", ")}.`,
       );
     }
+
+    if (foundTables.has("loan_payments")) {
+      const [paymentBalanceRows] = await connection.execute(
+        `SELECT l.uuid, l.amount_paid,
+                COALESCE(SUM(lp.amount), 0) AS registered_payments
+           FROM loans l
+           LEFT JOIN loan_payments lp ON lp.loan_id = l.id
+          GROUP BY l.id, l.uuid, l.amount_paid
+         HAVING ABS(l.amount_paid - registered_payments) > 0.01`,
+      );
+      if (paymentBalanceRows.length) {
+        issues.push(
+          `Hay ${paymentBalanceRows.length} créditos cuyo total pagado no coincide con su historial: ${paymentBalanceRows.map((row) => row.uuid).join(", ")}.`,
+        );
+      }
+    }
+
+    const [invalidStatusRows] = await connection.execute(
+      `SELECT uuid
+         FROM loans
+        WHERE (status = 'liquidado' AND ABS(balance) > 0.01)
+           OR (status = 'activo' AND balance <= 0)`,
+    );
+    if (invalidStatusRows.length) {
+      issues.push(
+        `Hay ${invalidStatusRows.length} créditos con estado y saldo incompatibles: ${invalidStatusRows.map((row) => row.uuid).join(", ")}.`,
+      );
+    }
+  }
+
+  if (foundTables.has("loan_applications") && foundTables.has("loans")) {
+    const [missingLoanRows] = await connection.execute(
+      `SELECT la.uuid
+         FROM loan_applications la
+         LEFT JOIN loans l ON l.application_id = la.id
+        WHERE la.status = 'aprobado'
+          AND l.id IS NULL`,
+    );
+    if (missingLoanRows.length) {
+      issues.push(
+        `Hay ${missingLoanRows.length} solicitudes aprobadas sin crédito creado: ${missingLoanRows.map((row) => row.uuid).join(", ")}.`,
+      );
+    }
+
+    const [invalidApplicationRows] = await connection.execute(
+      `SELECT uuid
+         FROM loan_applications
+        WHERE (status = 'borrador' AND submitted_at IS NOT NULL)
+           OR (status IN ('en_revision', 'oferta_pendiente') AND submitted_at IS NULL)`,
+    );
+    if (invalidApplicationRows.length) {
+      issues.push(
+        `Hay ${invalidApplicationRows.length} solicitudes con estado y fecha de envío incompatibles: ${invalidApplicationRows.map((row) => row.uuid).join(", ")}.`,
+      );
+    }
+  }
+
+  if (foundTables.has("users") && foundTables.has("client_profiles")) {
+    const [missingProfileRows] = await connection.execute(
+      `SELECT u.uuid
+         FROM users u
+         LEFT JOIN client_profiles cp ON cp.user_id = u.id
+        WHERE u.role = 'cliente'
+          AND cp.user_id IS NULL`,
+    );
+    if (missingProfileRows.length) {
+      issues.push(
+        `Hay ${missingProfileRows.length} clientes sin perfil asociado: ${missingProfileRows.map((row) => row.uuid).join(", ")}.`,
+      );
+    }
   }
 
   if (issues.length) {
@@ -202,7 +289,7 @@ try {
     process.exitCode = 1;
   } else {
     console.log(
-      `Base correcta: ${requiredTables.length} tablas, 36 opciones, tarjeta/CLABE de depósito y cartera consistente.`,
+      `Base correcta: ${requiredTables.length} tablas, 36 opciones, solicitudes, pagos y cartera consistentes.`,
     );
   }
 } finally {

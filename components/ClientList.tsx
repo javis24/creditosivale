@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { WhatsAppProcessNotice } from "@/components/admin/WhatsAppActions";
+import type { ClientProcess } from "@/lib/client-process";
 
 type Client = {
   uuid: string;
@@ -13,6 +15,7 @@ type Client = {
   monthlyIncome: number | null;
   city: string | null;
   state: string | null;
+  process: ClientProcess;
 };
 
 type Pagination = {
@@ -116,16 +119,17 @@ export default function ClientList({ canManageClients }: { canManageClients: boo
               <th>Ocupación</th>
               <th>Ingreso mensual</th>
               <th>Ubicación</th>
+              <th>Proceso</th>
               <th>Estado</th>
               {canManageClients ? <th>Acciones</th> : null}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={canManageClients ? 7 : 6} className="empty-state">Cargando clientes…</td></tr>
+              <tr><td colSpan={canManageClients ? 8 : 7} className="empty-state">Cargando clientes…</td></tr>
             ) : clients.length === 0 ? (
               <tr>
-                <td colSpan={canManageClients ? 7 : 6} className="empty-state">
+                <td colSpan={canManageClients ? 8 : 7} className="empty-state">
                   <strong>Aún no hay clientes.</strong>
                   <span>Registra el primer expediente para comenzar.</span>
                 </td>
@@ -138,12 +142,25 @@ export default function ClientList({ canManageClients }: { canManageClients: boo
                   <td>{client.occupation || "—"}</td>
                   <td>{client.monthlyIncome == null ? "—" : money.format(client.monthlyIncome)}</td>
                   <td>{[client.city, client.state].filter(Boolean).join(", ") || "—"}</td>
+                  <td>
+                    <strong>{client.process.title}</strong>
+                    <small>Paso {client.process.currentStep} de 6</small>
+                  </td>
                   <td><span className={`status status-${client.status}`}>{client.status}</span></td>
                   {canManageClients ? (
                     <td>
-                      <Link className="button button-secondary button-small" href={`/dashboard/clientes/${client.uuid}`}>
-                        Editar
-                      </Link>
+                      <div className="table-row-actions">
+                        <Link className="button button-secondary button-small" href={`/dashboard/clientes/${client.uuid}`}>
+                          Ver proceso
+                        </Link>
+                        <WhatsAppProcessNotice
+                          phone={client.phone}
+                          clientName={client.name}
+                          process={client.process.key}
+                          compact
+                          label="WhatsApp"
+                        />
+                      </div>
                     </td>
                   ) : null}
                 </tr>

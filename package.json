@@ -3,15 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-  "dev": "next dev",
-  "build": "next build",
-  "start": "next start",
-  "test": "vitest run",
-  "test:watch": "vitest",
-  "lint": "eslint .",
-  "typecheck": "tsc --noEmit",
-  "db:create-admin": "node --env-file=.env scripts/create-admin.mjs"
-},
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:smoke": "node scripts/smoke-test.mjs",
+    "test:db": "node --env-file=.env scripts/check-database.mjs",
+    "check": "node scripts/verify.mjs",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "db:create-admin": "node --env-file=.env scripts/create-admin.mjs"
+  },
   "engines": {
     "node": ">=20.9.0"
   },

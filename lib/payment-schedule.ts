@@ -46,6 +46,10 @@ function monthEndPaymentDate(year: number, month: number) {
   return isoDate(year, month, Math.min(30, daysInMonth(year, month)));
 }
 
+function roundMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 export function firstFortnightDueDate(disbursementDate: string) {
   const { year, month, day } = parseIsoDate(disbursementDate);
 
@@ -85,11 +89,10 @@ export function buildFortnightSchedule(
     schedule.push({
       installmentNumber: index,
       dueDate,
-      amountDue: Number(installmentAmount.toFixed(2)),
+      amountDue: roundMoney(installmentAmount),
     });
     dueDate = nextFortnightDueDate(dueDate);
   }
 
   return schedule;
 }
-

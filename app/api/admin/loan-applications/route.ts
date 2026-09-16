@@ -20,7 +20,9 @@ type CountRow = RowDataPacket & { total: number };
 type ApplicationRow = RowDataPacket & {
   uuid: string;
   status: string;
+  flow_version: number;
   requested_amount: number;
+  process_amount: number;
   term_fortnights: number;
   fortnight_payment: number;
   total_payment: number;
@@ -75,7 +77,9 @@ export async function GET(request: Request) {
         parameters,
       ),
       db.execute<ApplicationRow[]>(
-        `SELECT la.uuid, la.status, la.requested_amount,
+        `SELECT la.uuid, la.status, la.flow_version, la.requested_amount,
+                COALESCE(la.approved_amount, la.offered_amount, la.requested_amount)
+                  AS process_amount,
                 COALESCE(la.offered_term_fortnights, la.term_fortnights)
                   AS term_fortnights,
                 COALESCE(la.offered_fortnight_payment, la.fortnight_payment)
@@ -106,7 +110,9 @@ export async function GET(request: Request) {
       applications: rows.map((row) => ({
         uuid: row.uuid,
         status: row.status,
+        flowVersion: Number(row.flow_version),
         requestedAmount: Number(row.requested_amount),
+        processAmount: Number(row.process_amount),
         termFortnights: Number(row.term_fortnights),
         fortnightPayment: Number(row.fortnight_payment),
         totalPayment: Number(row.total_payment),

@@ -23,6 +23,9 @@ quincenal e historial de pagos.
 - Registro de pagos aplicado primero a las quincenas más antiguas.
 - Perfil del cliente con semana, quincena, próximo pago, saldo e historial.
 - Liquidación automática y habilitación de una nueva solicitud.
+- Seguimiento administrativo visual del proceso completo de cada cliente.
+- Botón de WhatsApp con mensajes adaptados a solicitud, documentos, oferta,
+  autorización, entrega, pagos, liquidación, rechazo o cancelación.
 
 > phpMyAdmin no es la base de datos: es la herramienta desde la que administrarás MySQL o MariaDB.
 
@@ -209,21 +212,31 @@ Si la base está en Hostinger, utiliza el host MySQL remoto que muestra su panel
 
 ## Pruebas automáticas
 
-Ejecuta las pruebas unitarias del calendario, teléfonos, validaciones y tarifario:
+Ejecuta todas las pruebas unitarias:
 
 ```bash
 npm test
 ```
 
+Para ejecutar de una vez pruebas, TypeScript, ESLint y el build de producción:
+
+```bash
+npm run check
+```
+
 Comprueba de forma no destructiva las páginas y protecciones del sitio publicado:
 
-```powershell
-$env:TEST_BASE_URL="https://www.creditosivale.com"
+```bash
 npm run test:smoke
 ```
 
+El comando usa `https://www.creditosivale.com` de forma predeterminada y no
+crea clientes, solicitudes ni pagos. Para probar otra dirección configura
+`TEST_BASE_URL`.
+
 Con las credenciales de MySQL configuradas en `.env`, revisa tablas,
-collations, las 36 tarifas, créditos duplicados y saldos:
+collations, las 36 tarifas, solicitudes aprobadas sin crédito, créditos
+duplicados, pagos y saldos:
 
 ```bash
 npm run test:db

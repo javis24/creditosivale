@@ -2,10 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  WhatsAppApprovalNotice,
-  WhatsAppOfferNotice,
-} from "@/components/admin/WhatsAppActions";
+import ClientProcessTracker from "@/components/admin/ClientProcessTracker";
+import { WhatsAppProcessNotice } from "@/components/admin/WhatsAppActions";
+import { getClientProcess } from "@/lib/client-process";
 
 type Document = {
   id: number;
@@ -307,6 +306,20 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
   }
 
   const reviewable = application.status === "en_revision";
+  const verifiedDocumentCount = application.documents.filter(
+    (document) =>
+      requiredDocumentTypes.includes(document.type) &&
+      document.verificationStatus === "verificado",
+  ).length;
+  const process = getClientProcess({
+    applicationStatus: application.status,
+    loanStatus: application.loan?.status,
+    documentCount: application.documents.length,
+    verifiedDocumentCount,
+    requiredDocumentCount: requiredDocumentTypes.length,
+    termFortnights:
+      application.offeredTermFortnights || application.termFortnights,
+  });
 
   return (
     <div className="review-layout">
@@ -332,6 +345,31 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
           <strong>{application.client.phone || "Sin WhatsApp"}</strong>
           <span>{application.client.email || "Sin correo"}</span>
         </div>
+      </section>
+
+      <ClientProcessTracker process={process} />
+
+      <section className="panel whatsapp-action-panel">
+        <div>
+          <p className="eyebrow">WhatsApp del proceso</p>
+          <h2>{process.title}</h2>
+          <p className="muted">
+            El mensaje explica al cliente qué debe hacer en esta etapa.
+          </p>
+        </div>
+        <WhatsAppProcessNotice
+          phone={application.client.phone}
+          clientName={application.client.name}
+          process={process.key}
+          amount={application.offeredAmount || application.requestedAmount}
+          installmentAmount={
+            application.offeredFortnightPayment || application.fortnightPayment
+          }
+          termFortnights={
+            application.offeredTermFortnights || application.termFortnights
+          }
+          label="Enviar WhatsApp al cliente"
+        />
       </section>
 
       <section className="review-grid">
@@ -460,11 +498,7 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
             <h2>Documentos y firma</h2>
           </div>
           <strong>
-            {application.documents.filter(
-              (document) =>
-                requiredDocumentTypes.includes(document.type) &&
-                document.verificationStatus === "verificado",
-            ).length}/{requiredDocumentTypes.length} verificados
+            {verifiedDocumentCount}/{requiredDocumentTypes.length} verificados
           </strong>
         </div>
 
@@ -639,13 +673,6 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
               {money.format(application.offeredFortnightPayment)}. El cliente debe
               aceptarla y firmarla desde su cuenta.
             </div>
-            <WhatsAppOfferNotice
-              phone={application.client.phone}
-              clientName={application.client.name}
-              offeredAmount={application.offeredAmount}
-              installmentAmount={application.offeredFortnightPayment}
-              termFortnights={application.offeredTermFortnights}
-            />
           </div>
         ) : null}
 
@@ -660,13 +687,6 @@ export default function LoanApplicationReview({ uuid }: { uuid: string }) {
             >
               Administrar crédito
             </Link>
-            <WhatsAppApprovalNotice
-              phone={application.client.phone}
-              clientName={application.client.name}
-              approvedAmount={application.offeredAmount || application.requestedAmount}
-              installmentAmount={application.offeredFortnightPayment || application.fortnightPayment}
-              termFortnights={application.offeredTermFortnights || application.termFortnights}
-            />
           </div>
         ) : null}
       </section>

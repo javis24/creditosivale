@@ -2,11 +2,15 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { WhatsAppProcessNotice } from "@/components/admin/WhatsAppActions";
+import { getClientProcess } from "@/lib/client-process";
 
 type Application = {
   uuid: string;
   status: string;
+  flowVersion: number;
   requestedAmount: number;
+  processAmount: number;
   termFortnights: number;
   fortnightPayment: number;
   totalPayment: number;
@@ -196,12 +200,29 @@ export default function LoanApplicationList() {
                     </span>
                   </td>
                   <td>
-                    <Link
-                      className="button button-secondary button-small"
-                      href={`/dashboard/solicitudes/${application.uuid}`}
-                    >
-                      Revisar
-                    </Link>
+                    <div className="table-row-actions">
+                      <Link
+                        className="button button-secondary button-small"
+                        href={`/dashboard/solicitudes/${application.uuid}`}
+                      >
+                        Revisar
+                      </Link>
+                      <WhatsAppProcessNotice
+                        phone={application.phone}
+                        clientName={application.clientName}
+                        process={getClientProcess({
+                          applicationStatus: application.status,
+                          documentCount: application.documentCount,
+                          verifiedDocumentCount: application.verifiedCount,
+                          requiredDocumentCount: application.flowVersion === 1 ? 5 : 4,
+                        }).key}
+                        amount={application.processAmount}
+                        installmentAmount={application.fortnightPayment}
+                        termFortnights={application.termFortnights}
+                        compact
+                        label="WhatsApp"
+                      />
+                    </div>
                   </td>
                 </tr>
               ))

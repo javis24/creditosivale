@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { WhatsAppProcessNotice } from "@/components/admin/WhatsAppActions";
+import { getClientProcess } from "@/lib/client-process";
 
 type Loan = {
   uuid: string;
@@ -199,12 +201,34 @@ export default function LoanPortfolioList() {
                     </span>
                   </td>
                   <td>
-                    <Link
-                      className="button button-secondary button-small"
-                      href={`/dashboard/creditos/${loan.uuid}`}
-                    >
-                      Administrar
-                    </Link>
+                    <div className="table-row-actions">
+                      <Link
+                        className="button button-secondary button-small"
+                        href={`/dashboard/creditos/${loan.uuid}`}
+                      >
+                        Administrar
+                      </Link>
+                      <WhatsAppProcessNotice
+                        phone={loan.phone}
+                        clientName={loan.clientName}
+                        process={getClientProcess({
+                          applicationStatus: "aprobado",
+                          loanStatus: loan.status,
+                          paidInstallments: loan.paidInstallments,
+                          termFortnights: loan.termFortnights,
+                          nextDueDate: loan.nextDueDate,
+                        }).key}
+                        amount={loan.principal}
+                        installmentAmount={
+                          loan.nextDueBalance ?? loan.installmentAmount
+                        }
+                        termFortnights={loan.termFortnights}
+                        installmentNumber={loan.paidInstallments + 1}
+                        dueDate={loan.nextDueDate}
+                        compact
+                        label="WhatsApp"
+                      />
+                    </div>
                   </td>
                 </tr>
               ))

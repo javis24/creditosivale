@@ -4,6 +4,9 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { canPermanentlyDeleteClient } from "@/lib/client-admin";
+import ClientProcessTracker from "@/components/admin/ClientProcessTracker";
+import { WhatsAppProcessNotice } from "@/components/admin/WhatsAppActions";
+import type { ClientProcess } from "@/lib/client-process";
 
 type ClientDetail = {
   uuid: string;
@@ -37,6 +40,15 @@ type ClientDetail = {
   application_count: number;
   loan_count: number;
   payment_count: number;
+  process: ClientProcess;
+  application_uuid: string | null;
+  loan_uuid: string | null;
+  process_amount: number;
+  process_installment_amount: number;
+  process_term_fortnights: number;
+  process_paid_installments: number;
+  process_next_due_date: string | null;
+  process_next_due_balance: number | null;
 };
 
 function validationMessage(result: { message?: string; errors?: Record<string, string[]> }) {
@@ -139,11 +151,61 @@ export default function ClientEditForm({ uuid }: { uuid: string }) {
   if (!client) return <div className="alert alert-error">{error || "Cliente no encontrado."}</div>;
 
   const deletionBlocked = !canPermanentlyDeleteClient(client.payment_count);
+  const clientName = [
+    client.first_name,
+    client.paternal_last_name,
+    client.maternal_last_name,
+  ].filter(Boolean).join(" ");
 
   return (
     <div className="client-admin-editor">
       {error ? <div className="alert alert-error form-alert" role="alert">{error}</div> : null}
       {success ? <div className="alert alert-success form-alert" role="status">{success}</div> : null}
+
+      <ClientProcessTracker process={client.process} />
+
+      <section className="panel whatsapp-action-panel">
+        <div>
+          <p className="eyebrow">Contacto según el proceso</p>
+          <h2>{client.process.title}</h2>
+          <p className="muted">
+            El mensaje se prepara automáticamente con la etapa actual del cliente.
+          </p>
+          <div className="process-related-links">
+            {client.application_uuid ? (
+              <Link
+                className="button button-secondary button-small"
+                href={`/dashboard/solicitudes/${client.application_uuid}`}
+              >
+                Abrir solicitud
+              </Link>
+            ) : null}
+            {client.loan_uuid ? (
+              <Link
+                className="button button-secondary button-small"
+                href={`/dashboard/creditos/${client.loan_uuid}`}
+              >
+                Abrir crédito
+              </Link>
+            ) : null}
+          </div>
+        </div>
+        <WhatsAppProcessNotice
+          phone={client.phone}
+          clientName={clientName}
+          process={client.process.key}
+          amount={client.process_amount}
+          installmentAmount={
+            client.process.key === "activo"
+              ? client.process_next_due_balance
+              : client.process_installment_amount
+          }
+          termFortnights={client.process_term_fortnights}
+          installmentNumber={client.process_paid_installments + 1}
+          dueDate={client.process_next_due_date}
+          label="Enviar mensaje al cliente"
+        />
+      </section>
 
       <form className="client-form" onSubmit={save} noValidate>
         <section className="panel form-section">
