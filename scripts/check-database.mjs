@@ -49,6 +49,7 @@ const connection = await mysql.createConnection({
 });
 
 try {
+  let paymentCancellationReady = false;
   const placeholders = requiredTables.map(() => "?").join(", ");
   const [tableRows] = await connection.execute(
     `SELECT TABLE_NAME AS table_name, TABLE_COLLATION AS table_collation
@@ -150,6 +151,44 @@ try {
     }
   }
 
+  if (foundTables.has("loan_payments")) {
+    const [paymentColumns] = await connection.execute(
+      `SELECT COLUMN_NAME AS column_name, COLUMN_TYPE AS column_type
+         FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'loan_payments'`,
+      [process.env.DB_NAME],
+    );
+    const foundPaymentColumns = new Set(
+      paymentColumns.map((row) => row.column_name),
+    );
+    const requiredCancellationColumns = [
+      "status",
+      "cancellation_reason",
+      "cancelled_at",
+      "cancelled_by",
+    ];
+    const missingCancellationColumns = requiredCancellationColumns.filter(
+      (column) => !foundPaymentColumns.has(column),
+    );
+    paymentCancellationReady = missingCancellationColumns.length === 0;
+
+    if (!paymentCancellationReady) {
+      issues.push(
+        `Falta ejecutar migration-010-payment-cancellations.sql. Columnas ausentes: ${missingCancellationColumns.join(", ")}.`,
+      );
+    } else {
+      const statusColumn = paymentColumns.find((row) => row.column_name === "status");
+      if (
+        !statusColumn?.column_type?.includes("aplicado") ||
+        !statusColumn?.column_type?.includes("cancelado")
+      ) {
+        issues.push(
+          "El estado de loan_payments no admite aplicado/cancelado; ejecuta migration-010-payment-cancellations.sql.",
+        );
+      }
+    }
+  }
+
   if (foundTables.has("credit_options")) {
     const [optionRows] = await connection.execute(
       `SELECT amount, term_fortnights, fortnight_payment, status
@@ -213,11 +252,14 @@ try {
     }
 
     if (foundTables.has("loan_payments")) {
+      const activePaymentFilter = paymentCancellationReady
+        ? " AND lp.status = 'aplicado'"
+        : "";
       const [paymentBalanceRows] = await connection.execute(
         `SELECT l.uuid, l.amount_paid,
                 COALESCE(SUM(lp.amount), 0) AS registered_payments
            FROM loans l
-           LEFT JOIN loan_payments lp ON lp.loan_id = l.id
+           LEFT JOIN loan_payments lp ON lp.loan_id = l.id${activePaymentFilter}
           GROUP BY l.id, l.uuid, l.amount_paid
          HAVING ABS(l.amount_paid - registered_payments) > 0.01`,
       );

@@ -21,6 +21,8 @@ quincenal e historial de pagos.
 - Firma del pagaré únicamente después de que el cliente acepta el monto final.
 - Activación del crédito y calendario automático los días 15 y 30.
 - Registro de pagos aplicado primero a las quincenas más antiguas.
+- Cancelación auditada de pagos capturados por error, con reversión automática
+  de quincenas, saldo y estado del crédito.
 - Perfil del cliente con semana, quincena, próximo pago, saldo e historial.
 - Liquidación automática y habilitación de una nueva solicitud.
 - Seguimiento administrativo visual del proceso completo de cada cliente.
@@ -103,6 +105,16 @@ mantiene intactas las solicitudes anteriores y activa el flujo nuevo:
 3. El cliente recibe la oferta, revisa el monto final y firma el pagaré.
 4. Al aceptar se crea el crédito pendiente de entrega.
 
+Si ya tienes funcionando el módulo de tarjeta/CLABE, no repitas sus
+migraciones. Ejecuta solamente la nueva:
+
+```text
+database/migration-010-payment-cancellations.sql
+```
+
+La migración 010 no elimina pagos: agrega un estado y los datos de auditoría
+necesarios para corregir capturas duplicadas o equivocadas.
+
 ## 4. Crear el primer administrador
 
 Después de importar las tablas ejecuta:
@@ -137,6 +149,7 @@ Abre [http://localhost:3000](http://localhost:3000). Para probar la conexión de
 | `POST` | `/api/admin/loan-applications/:uuid/decision` | Admin/Gerencia | Ofertar, autorizar legado o rechazar |
 | `POST` | `/api/admin/loans/:uuid/activate` | Admin/Gerencia | Activar crédito |
 | `POST` | `/api/admin/loans/:uuid/payments` | Admin/Gerencia | Registrar pago |
+| `DELETE` | `/api/admin/loans/:uuid/payments/:paymentUuid` | Admin/Gerencia | Cancelar y revertir un pago |
 
 `gerencia` y `vendedor` pueden crear clientes. Únicamente `admin` puede crear cuentas de personal.
 
@@ -208,7 +221,9 @@ Si la base está en Hostinger, utiliza el host MySQL remoto que muestra su panel
 4. El crédito aparece en **Créditos y pagos** como pendiente de entrega.
 5. Al confirmar la fecha de entrega se genera el calendario quincenal.
 6. Cada pago se registra en el crédito y se distribuye en orden.
-7. Al cubrir el saldo, el crédito cambia a `liquidado` y el cliente puede solicitar otro.
+7. Si una captura fue incorrecta, Admin o Gerencia la cancela desde el historial;
+   el sistema revierte sus aplicaciones, conserva la auditoría y recalcula el saldo.
+8. Al cubrir el saldo, el crédito cambia a `liquidado` y el cliente puede solicitar otro.
 
 ## Pruebas automáticas
 

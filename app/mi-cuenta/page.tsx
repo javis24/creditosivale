@@ -153,6 +153,7 @@ export default async function ClientAccountPage() {
         `SELECT uuid, amount, payment_date, payment_method, reference
            FROM loan_payments
           WHERE loan_id = ?
+            AND status = 'aplicado'
           ORDER BY payment_date DESC, created_at DESC`,
         [loan.id],
       ),

@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import ClientProcessTracker from "@/components/admin/ClientProcessTracker";
 import { WhatsAppProcessNotice } from "@/components/admin/WhatsAppActions";
 import { getClientProcess } from "@/lib/client-process";
@@ -23,6 +30,10 @@ type Payment = {
   paymentMethod: string;
   reference: string | null;
   notes: string | null;
+  status: "aplicado" | "cancelado";
+  cancellationReason: string | null;
+  cancelledAt: string | null;
+  cancelledByName: string | null;
   createdAt: string;
   receiverName: string;
 };
@@ -104,6 +115,9 @@ export default function LoanManagement({ uuid }: { uuid: string }) {
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [paymentToCancel, setPaymentToCancel] = useState<string | null>(null);
+  const [cancellationReason, setCancellationReason] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -202,6 +216,45 @@ export default function LoanManagement({ uuid }: { uuid: string }) {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function cancelPayment(event: FormEvent, paymentUuid: string) {
+    event.preventDefault();
+    setCancelling(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await fetch(
+        `/api/admin/loans/${uuid}/payments/${paymentUuid}`,
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason: cancellationReason }),
+        },
+      );
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || "No se pudo cancelar el pago.");
+      }
+
+      setMessage(result.message);
+      setPaymentToCancel(null);
+      setCancellationReason("");
+      setAmount("");
+      await loadLoan();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Ocurrió un error.");
+    } finally {
+      setCancelling(false);
+    }
+  }
+
+  function openPaymentCancellation(paymentUuid: string) {
+    setError("");
+    setMessage("");
+    setPaymentToCancel(paymentUuid);
+    setCancellationReason("");
   }
 
   if (loading && !loan) {
@@ -474,17 +527,102 @@ export default function LoanManagement({ uuid }: { uuid: string }) {
                   <th>Forma</th>
                   <th>Referencia</th>
                   <th>Registró</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {loan.payments.map((payment) => (
-                  <tr key={payment.uuid}>
-                    <td>{formatDate(payment.paymentDate)}</td>
-                    <td><strong>{money.format(payment.amount)}</strong></td>
-                    <td>{paymentMethodLabels[payment.paymentMethod]}</td>
-                    <td>{payment.reference || "—"}</td>
-                    <td>{payment.receiverName}</td>
-                  </tr>
+                  <Fragment key={payment.uuid}>
+                    <tr className={payment.status === "cancelado" ? "payment-row-cancelled" : undefined}>
+                      <td>{formatDate(payment.paymentDate)}</td>
+                      <td><strong>{money.format(payment.amount)}</strong></td>
+                      <td>{paymentMethodLabels[payment.paymentMethod]}</td>
+                      <td>{payment.reference || "—"}</td>
+                      <td>{payment.receiverName}</td>
+                      <td>
+                        <span className={`status status-${payment.status}`}>
+                          {payment.status === "cancelado" ? "Cancelado" : "Aplicado"}
+                        </span>
+                        {payment.status === "cancelado" ? (
+                          <small>
+                            {payment.cancelledByName || "Administrador"}
+                            {payment.cancellationReason
+                              ? ` · ${payment.cancellationReason}`
+                              : ""}
+                          </small>
+                        ) : null}
+                      </td>
+                      <td>
+                        {canManage &&
+                        payment.status === "aplicado" &&
+                        ["activo", "liquidado"].includes(loan.status) ? (
+                          <button
+                            type="button"
+                            className="button button-danger button-small"
+                            onClick={() => openPaymentCancellation(payment.uuid)}
+                          >
+                            Cancelar pago
+                          </button>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                    </tr>
+                    {paymentToCancel === payment.uuid ? (
+                      <tr className="payment-cancellation-row">
+                        <td colSpan={7}>
+                          <form
+                            className="payment-cancellation-form"
+                            onSubmit={(event) => cancelPayment(event, payment.uuid)}
+                          >
+                            <div>
+                              <strong>
+                                Cancelar pago de {money.format(payment.amount)}
+                              </strong>
+                              <p>
+                                Se revertirán las quincenas cubiertas y se recalculará el
+                                saldo. El movimiento permanecerá visible para auditoría.
+                              </p>
+                            </div>
+                            <label className="field">
+                              <span>Motivo de la cancelación</span>
+                              <textarea
+                                rows={3}
+                                minLength={10}
+                                maxLength={500}
+                                value={cancellationReason}
+                                onChange={(event) =>
+                                  setCancellationReason(event.target.value)
+                                }
+                                placeholder="Ejemplo: el pago se capturó dos veces por error."
+                                required
+                              />
+                            </label>
+                            <div className="payment-cancellation-actions">
+                              <button
+                                type="button"
+                                className="button button-secondary"
+                                disabled={cancelling}
+                                onClick={() => {
+                                  setPaymentToCancel(null);
+                                  setCancellationReason("");
+                                }}
+                              >
+                                Volver
+                              </button>
+                              <button
+                                className="button button-danger"
+                                disabled={cancelling || cancellationReason.trim().length < 10}
+                              >
+                                {cancelling ? "Cancelando…" : "Confirmar cancelación"}
+                              </button>
+                            </div>
+                          </form>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

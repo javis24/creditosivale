@@ -1419,6 +1419,11 @@ td small {
   background: var(--green-100);
 }
 
+.status-aplicado {
+  color: var(--green-600);
+  background: var(--green-100);
+}
+
 .status-inactivo,
 .status-bloqueado {
   color: var(--red-700);
@@ -2205,6 +2210,42 @@ td small {
   color: var(--slate-500);
 }
 
+.payment-row-cancelled td {
+  color: var(--slate-500);
+  background: #fffafa;
+}
+
+.payment-row-cancelled td > strong {
+  text-decoration: line-through;
+}
+
+.payment-cancellation-row td {
+  padding: 0;
+  background: var(--red-100);
+}
+
+.payment-cancellation-form {
+  display: grid;
+  padding: 22px;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(300px, 1.2fr);
+  align-items: start;
+  gap: 20px;
+}
+
+.payment-cancellation-form p {
+  margin: 6px 0 0;
+  color: var(--slate-700);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.payment-cancellation-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  grid-column: 1 / -1;
+}
+
 .client-loan-card {
   margin-bottom: 24px;
   padding: clamp(22px, 4vw, 34px);
@@ -2706,6 +2747,10 @@ td small {
     grid-template-columns: 1fr;
   }
 
+  .payment-cancellation-form {
+    grid-template-columns: 1fr;
+  }
+
   .client-danger-zone {
     grid-template-columns: 1fr;
   }
@@ -2753,6 +2798,15 @@ td small {
   }
 
   .payment-submit {
+    width: 100%;
+  }
+
+  .payment-cancellation-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .payment-cancellation-actions .button {
     width: 100%;
   }
 }

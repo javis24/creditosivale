@@ -46,8 +46,12 @@ type PaymentRow = RowDataPacket & {
   payment_method: string;
   reference: string | null;
   notes: string | null;
+  status: "aplicado" | "cancelado";
+  cancellation_reason: string | null;
+  cancelled_at: string | null;
   created_at: string;
   receiver_name: string;
+  cancelled_by_name: string | null;
 };
 
 export async function GET(
@@ -96,11 +100,17 @@ export async function GET(
       ),
       db.execute<PaymentRow[]>(
         `SELECT lp.uuid, lp.amount, lp.payment_date, lp.payment_method,
-                lp.reference, lp.notes, lp.created_at,
+                lp.reference, lp.notes, lp.status, lp.cancellation_reason,
+                lp.cancelled_at, lp.created_at,
                 TRIM(CONCAT_WS(' ', u.first_name, u.paternal_last_name,
-                                    u.maternal_last_name)) AS receiver_name
+                                    u.maternal_last_name)) AS receiver_name,
+                NULLIF(TRIM(CONCAT_WS(' ', canceller.first_name,
+                                          canceller.paternal_last_name,
+                                          canceller.maternal_last_name)), '')
+                  AS cancelled_by_name
            FROM loan_payments lp
            INNER JOIN users u ON u.id = lp.received_by
+           LEFT JOIN users canceller ON canceller.id = lp.cancelled_by
           WHERE lp.loan_id = ?
           ORDER BY lp.payment_date DESC, lp.created_at DESC`,
         [loan.id],
@@ -147,6 +157,10 @@ export async function GET(
           paymentMethod: payment.payment_method,
           reference: payment.reference,
           notes: payment.notes,
+          status: payment.status,
+          cancellationReason: payment.cancellation_reason,
+          cancelledAt: payment.cancelled_at,
+          cancelledByName: payment.cancelled_by_name,
           createdAt: payment.created_at,
           receiverName: payment.receiver_name,
         })),

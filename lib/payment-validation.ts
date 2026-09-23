@@ -33,3 +33,10 @@ export const registerPaymentSchema = z.object({
   notes: z.string().trim().max(500).default(""),
 });
 
+export const cancelPaymentSchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .min(10, "Escribe un motivo de al menos 10 caracteres.")
+    .max(500, "El motivo no puede superar 500 caracteres."),
+});

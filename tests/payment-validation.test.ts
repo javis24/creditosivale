@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   activateLoanSchema,
+  cancelPaymentSchema,
   loanStatusSchema,
   loanUuidSchema,
   registerPaymentSchema,
@@ -60,5 +61,12 @@ describe("validación de créditos y pagos", () => {
         paymentMethod: "tarjeta",
       }).success,
     ).toBe(false);
+  });
+
+  it("exige un motivo suficiente para cancelar un pago", () => {
+    expect(
+      cancelPaymentSchema.parse({ reason: " Captura duplicada del administrador. " }),
+    ).toEqual({ reason: "Captura duplicada del administrador." });
+    expect(cancelPaymentSchema.safeParse({ reason: "error" }).success).toBe(false);
   });
 });

@@ -335,15 +335,23 @@ CREATE TABLE IF NOT EXISTS loan_payments (
   payment_method ENUM('efectivo', 'transferencia', 'deposito', 'otro') NOT NULL,
   reference VARCHAR(120) NULL,
   notes VARCHAR(500) NULL,
+  status ENUM('aplicado', 'cancelado') NOT NULL DEFAULT 'aplicado',
+  cancellation_reason VARCHAR(500) NULL,
+  cancelled_at DATETIME NULL,
+  cancelled_by BIGINT UNSIGNED NULL,
   received_by BIGINT UNSIGNED NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_loan_payments_uuid (uuid),
   KEY idx_loan_payments_loan_date (loan_id, payment_date, created_at),
+  KEY idx_loan_payments_status (loan_id, status),
   KEY idx_loan_payments_receiver (received_by),
+  KEY idx_loan_payments_cancelled_by (cancelled_by),
   CONSTRAINT fk_loan_payments_loan FOREIGN KEY (loan_id)
     REFERENCES loans(id) ON UPDATE CASCADE ON DELETE RESTRICT,
   CONSTRAINT fk_loan_payments_received_by FOREIGN KEY (received_by)
+    REFERENCES users(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+  CONSTRAINT fk_loan_payments_cancelled_by FOREIGN KEY (cancelled_by)
     REFERENCES users(id) ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
