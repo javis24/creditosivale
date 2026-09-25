@@ -2204,6 +2204,14 @@ td small {
   border-bottom: 1px solid var(--slate-200);
 }
 
+.schedule-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .empty-copy {
   margin: 0;
   padding: 28px;
@@ -2808,5 +2816,10 @@ td small {
 
   .payment-cancellation-actions .button {
     width: 100%;
+  }
+
+  .schedule-heading-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

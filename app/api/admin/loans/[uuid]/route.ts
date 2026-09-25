@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { apiErrorResponse, ApiError } from "@/lib/api-error";
 import { requireApiUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { firstFortnightDueDate } from "@/lib/payment-schedule";
 import { loanUuidSchema } from "@/lib/payment-validation";
 
 export const dynamic = "force-dynamic";
@@ -117,9 +118,22 @@ export async function GET(
       ),
     ]);
 
+    const canManage = ["admin", "gerencia"].includes(actor.role);
+    const suggestedFirstDueDate = loan.disbursement_date
+      ? firstFortnightDueDate(loan.disbursement_date)
+      : null;
+    const canReschedule = Boolean(
+      canManage &&
+        loan.status === "activo" &&
+        Number(loan.amount_paid) === 0 &&
+        installments.length === Number(loan.term_fortnights) &&
+        suggestedFirstDueDate &&
+        loan.first_due_date !== suggestedFirstDueDate,
+    );
+
     return NextResponse.json({
       ok: true,
-      permissions: { canManage: ["admin", "gerencia"].includes(actor.role) },
+      permissions: { canManage, canReschedule },
       loan: {
         uuid: loan.uuid,
         applicationUuid: loan.application_uuid,

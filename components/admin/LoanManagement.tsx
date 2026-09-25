@@ -107,6 +107,7 @@ function formatDate(value: string | null) {
 export default function LoanManagement({ uuid }: { uuid: string }) {
   const [loan, setLoan] = useState<Loan | null>(null);
   const [canManage, setCanManage] = useState(false);
+  const [canReschedule, setCanReschedule] = useState(false);
   const [disbursementDate, setDisbursementDate] = useState(todayLocal());
   const [amount, setAmount] = useState("");
   const [paymentDate, setPaymentDate] = useState(todayLocal());
@@ -116,6 +117,7 @@ export default function LoanManagement({ uuid }: { uuid: string }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [rescheduling, setRescheduling] = useState(false);
   const [paymentToCancel, setPaymentToCancel] = useState<string | null>(null);
   const [cancellationReason, setCancellationReason] = useState("");
   const [error, setError] = useState("");
@@ -135,6 +137,7 @@ export default function LoanManagement({ uuid }: { uuid: string }) {
 
       setLoan(result.loan);
       setCanManage(result.permissions.canManage);
+      setCanReschedule(result.permissions.canReschedule);
       setAmount((current) =>
         current || String(Math.min(result.loan.installmentAmount, result.loan.balance)),
       );
@@ -255,6 +258,29 @@ export default function LoanManagement({ uuid }: { uuid: string }) {
     setMessage("");
     setPaymentToCancel(paymentUuid);
     setCancellationReason("");
+  }
+
+  async function recalculateSchedule() {
+    setRescheduling(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await fetch(`/api/admin/loans/${uuid}/schedule`, {
+        method: "POST",
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || "No se pudo actualizar el calendario.");
+      }
+
+      setMessage(result.message);
+      await loadLoan();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Ocurrió un error.");
+    } finally {
+      setRescheduling(false);
+    }
   }
 
   if (loading && !loan) {
@@ -466,7 +492,19 @@ export default function LoanManagement({ uuid }: { uuid: string }) {
             <p className="eyebrow">Calendario</p>
             <h2>Quincenas del crédito</h2>
           </div>
-          <strong>{paidInstallments}/{loan.termFortnights} pagadas</strong>
+          <div className="schedule-heading-actions">
+            <strong>{paidInstallments}/{loan.termFortnights} pagadas</strong>
+            {canReschedule ? (
+              <button
+                type="button"
+                className="button button-secondary button-small"
+                disabled={rescheduling}
+                onClick={recalculateSchedule}
+              >
+                {rescheduling ? "Actualizando…" : "Corregir primera quincena"}
+              </button>
+            ) : null}
+          </div>
         </div>
         {loan.installments.length ? (
           <div className="table-wrap">

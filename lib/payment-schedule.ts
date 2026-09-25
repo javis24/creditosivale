@@ -52,9 +52,10 @@ function roundMoney(value: number) {
 
 export function firstFortnightDueDate(disbursementDate: string) {
   const { year, month, day } = parseIsoDate(disbursementDate);
+  const monthEndDay = Math.min(30, daysInMonth(year, month));
 
-  if (day <= 6) return isoDate(year, month, 15);
-  if (day <= 21) return monthEndPaymentDate(year, month);
+  if (day < 15) return isoDate(year, month, 15);
+  if (day < monthEndDay) return monthEndPaymentDate(year, month);
 
   const next = addMonth(year, month);
   return isoDate(next.year, next.month, 15);

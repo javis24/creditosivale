@@ -19,7 +19,8 @@ quincenal e historial de pagos.
 - Autorización administrativa con validación de documentos privados.
 - Solicitudes iniciales de $1,000 a $8,000 y contraoferta administrativa.
 - Firma del pagaré únicamente después de que el cliente acepta el monto final.
-- Activación del crédito y calendario automático los días 15 y 30.
+- Activación del crédito y calendario automático en la quincena inmediata
+  siguiente: días 15 y 30 (último día del mes en febrero).
 - Registro de pagos aplicado primero a las quincenas más antiguas.
 - Cancelación auditada de pagos capturados por error, con reversión automática
   de quincenas, saldo y estado del crédito.
@@ -150,6 +151,7 @@ Abre [http://localhost:3000](http://localhost:3000). Para probar la conexión de
 | `POST` | `/api/admin/loans/:uuid/activate` | Admin/Gerencia | Activar crédito |
 | `POST` | `/api/admin/loans/:uuid/payments` | Admin/Gerencia | Registrar pago |
 | `DELETE` | `/api/admin/loans/:uuid/payments/:paymentUuid` | Admin/Gerencia | Cancelar y revertir un pago |
+| `POST` | `/api/admin/loans/:uuid/schedule` | Admin/Gerencia | Corregir calendario sin pagos |
 
 `gerencia` y `vendedor` pueden crear clientes. Únicamente `admin` puede crear cuentas de personal.
 
@@ -219,7 +221,9 @@ Si la base está en Hostinger, utiliza el host MySQL remoto que muestra su panel
 2. Envía una oferta del tarifario, igual o menor al monto solicitado.
 3. El cliente acepta la oferta y firma el pagaré con el monto final.
 4. El crédito aparece en **Créditos y pagos** como pendiente de entrega.
-5. Al confirmar la fecha de entrega se genera el calendario quincenal.
+5. Al confirmar la fecha de entrega se genera el calendario en la siguiente
+   fecha quincenal. Ejemplo: una entrega del 23 de septiembre inicia el 30 de
+   septiembre; una entrega el 30 inicia el 15 de octubre.
 6. Cada pago se registra en el crédito y se distribuye en orden.
 7. Si una captura fue incorrecta, Admin o Gerencia la cancela desde el historial;
    el sistema revierte sus aplicaciones, conserva la auditoría y recalcula el saldo.
